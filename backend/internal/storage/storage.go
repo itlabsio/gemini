@@ -33,10 +33,21 @@ const ExtensionsSuffix = ".extensions"
 
 // Client — обёртка над minio-go под конкретный бакет.
 type Client struct {
-	mc     *minio.Client
-	id     string
-	name   string
-	bucket string
+	mc       *minio.Client
+	id       string
+	name     string
+	endpoint string
+	bucket   string
+}
+
+// bucketLabel — как бакет показывается в логах и нотификациях: s3://bucket (endpoint).
+func bucketLabel(endpoint, bucket string) string {
+	return "s3://" + bucket + " (" + strings.TrimSuffix(endpoint, "/") + ")"
+}
+
+// objectLabel — объект в логах: s3://bucket/key (endpoint).
+func objectLabel(endpoint, bucket, key string) string {
+	return "s3://" + bucket + "/" + key + " (" + strings.TrimSuffix(endpoint, "/") + ")"
 }
 
 // JobBucket — описание бакета для dump/restore-Job'а: голова кладёт список в
@@ -52,6 +63,12 @@ type JobBucket struct {
 	PathStyle       bool   `json:"path_style"`
 	UseSSL          bool   `json:"use_ssl"`
 }
+
+// String — s3://bucket (endpoint) для логов Job'а.
+func (b JobBucket) String() string { return bucketLabel(b.Endpoint, b.Bucket) }
+
+// Object — s3://bucket/key (endpoint) для логов Job'а.
+func (b JobBucket) Object(key string) string { return objectLabel(b.Endpoint, b.Bucket, key) }
 
 // JobBucketOf переводит бакет в формат для Job'а.
 func JobBucketOf(b model.S3Bucket) JobBucket {
@@ -75,7 +92,7 @@ func (b JobBucket) Minio() (*minio.Client, error) {
 		BucketLookup: lookup,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("s3 client %s: %w", b.Name, err)
+		return nil, fmt.Errorf("s3 client %s: %w", b, err)
 	}
 	return mc, nil
 }
@@ -86,14 +103,17 @@ func New(b model.S3Bucket) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{mc: mc, id: b.ID, name: b.Name, bucket: b.Bucket}, nil
+	return &Client{mc: mc, id: b.ID, name: bucketLabel(b.Endpoint, b.Bucket), endpoint: b.Endpoint, bucket: b.Bucket}, nil
 }
 
 // ID — id бакета (BuiltInID для бакета из env).
 func (c *Client) ID() string { return c.id }
 
-// Name — человекочитаемое имя бакета (для логов и нотификаций).
+// Name — бакет для логов и нотификаций: s3://bucket (endpoint).
 func (c *Client) Name() string { return c.name }
+
+// Object — объект бакета для логов: s3://bucket/key (endpoint).
+func (c *Client) Object(key string) string { return objectLabel(c.endpoint, c.bucket, key) }
 
 // Ping проверяет доступность S3 и наличие бакета.
 func (c *Client) Ping(ctx context.Context) error {

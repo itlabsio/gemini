@@ -138,8 +138,8 @@ func runDump(ctx context.Context, e Env) error {
 	var failed []string
 	for _, b := range e.S3Buckets {
 		if err := uploadDump(ctx, b, e.S3ObjectKey, dumpPath, sum, exts); err != nil {
-			log.Printf("dump: bucket %s: %v", b.Name, err)
-			failed = append(failed, b.Name)
+			log.Printf("dump: bucket %s: %v", b, err)
+			failed = append(failed, b.String())
 		}
 	}
 	if len(failed) == len(e.S3Buckets) {
@@ -170,7 +170,7 @@ func uploadDump(ctx context.Context, b storage.JobBucket, key, dumpPath, sum str
 		return err
 	}
 
-	log.Printf("dump: uploading s3://%s/%s to %s (%d bytes)", b.Bucket, key, b.Name, fi.Size())
+	log.Printf("dump: uploading %s, %d bytes", b.Object(key), fi.Size())
 	if _, err := mc.PutObject(ctx, b.Bucket, key, f, fi.Size(), minio.PutObjectOptions{
 		ContentType: "application/octet-stream",
 	}); err != nil {

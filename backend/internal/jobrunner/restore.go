@@ -120,14 +120,14 @@ func downloadDump(ctx context.Context, e Env, dumpPath string) (storage.JobBucke
 	for _, b := range e.restoreOrder() {
 		mc, err := b.Minio()
 		if err == nil {
-			log.Printf("restore: downloading s3://%s/%s from %s", b.Bucket, e.S3ObjectKey, b.Name)
+			log.Printf("restore: downloading %s", b.Object(e.S3ObjectKey))
 			err = mc.FGetObject(ctx, b.Bucket, e.S3ObjectKey, dumpPath, minio.GetObjectOptions{})
 		}
 		if err == nil {
 			return b, nil
 		}
-		log.Printf("restore: bucket %s: %v", b.Name, err)
-		errs = append(errs, fmt.Errorf("%s: %w", b.Name, err))
+		log.Printf("restore: bucket %s: %v", b, err)
+		errs = append(errs, fmt.Errorf("%s: %w", b, err))
 	}
 	return storage.JobBucket{}, fmt.Errorf("download dump: %w", errors.Join(errs...))
 }

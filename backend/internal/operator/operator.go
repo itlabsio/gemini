@@ -594,10 +594,10 @@ func (o *Operator) signDump(ctx context.Context, db *model.Database, run *model.
 			continue
 		}
 		if err := c.PutSignature(ctx, run.S3ObjectKey, sig); err != nil {
-			log.Printf("operator: upload signature for %s to %s: %v", run.S3ObjectKey, c.Name(), err)
+			log.Printf("operator: upload signature for %s: %v", c.Object(run.S3ObjectKey), err)
 			continue
 		}
-		log.Printf("operator: signed dump %s in %s", run.S3ObjectKey, c.Name())
+		log.Printf("operator: signed dump %s", c.Object(run.S3ObjectKey))
 	}
 	if len(missing) > 0 && o.notifier != nil {
 		_ = o.notifier.Failure(ctx, notify.Event{
@@ -648,7 +648,7 @@ func (o *Operator) BackfillSignatures(ctx context.Context) {
 			}
 			sig := peer.SignArtifact(priv, r.S3ObjectKey, r.Checksum)
 			if err := c.PutSignature(ctx, r.S3ObjectKey, sig); err != nil {
-				log.Printf("operator: signature backfill: put %s to %s: %v", r.S3ObjectKey, c.Name(), err)
+				log.Printf("operator: signature backfill: put %s: %v", c.Object(r.S3ObjectKey), err)
 				continue
 			}
 			signed++
