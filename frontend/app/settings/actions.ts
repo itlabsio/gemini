@@ -23,6 +23,7 @@ export async function updateSettingsAction(p: {
   default_storage_size: string;
   default_resources: ResourceSpec;
   default_pod_scheduling?: Record<string, unknown> | null;
+  job_ttl_minutes: number;
 }): Promise<Result> {
   try {
     await updateSettings(p);

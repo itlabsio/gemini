@@ -49,9 +49,9 @@ func New(cfg *config.Config, st *store.Store, kc *k8s.Client, vc *vault.Client,
 	return &Operator{cfg: cfg, store: st, k8s: kc, vault: vc, buckets: sc, notifier: nt, peer: pc, baseOverrides: ovr}
 }
 
-// jobParams разрешает временное хранилище и ресурсы для Job'ов базы:
+// jobParams разрешает временное хранилище, ресурсы и TTL (секунды) для Job'ов базы:
 // Database.Storage* → app_settings → config (env из Helm).
-func (o *Operator) jobParams(ctx context.Context, db *model.Database) (storageType, storageSize string, overrides k8s.PodOverrides) {
+func (o *Operator) jobParams(ctx context.Context, db *model.Database) (storageType, storageSize string, overrides k8s.PodOverrides, ttl int32) {
 	storageType = string(db.StorageType)
 	storageSize = db.StorageSize
 	overrides = o.baseOverrides
@@ -63,6 +63,7 @@ func (o *Operator) jobParams(ctx context.Context, db *model.Database) (storageTy
 		if storageSize == "" {
 			storageSize = st.DefaultStorageSize
 		}
+		ttl = st.JobTTLMinutes * 60
 		r := st.DefaultResources
 		overrides = overrides.WithResources(r.Requests.CPU, r.Requests.Memory, r.Limits.CPU, r.Limits.Memory)
 		if len(st.DefaultPodScheduling) > 0 {
@@ -253,7 +254,7 @@ func (o *Operator) ensureCronJob(ctx context.Context, kind string, db *model.Dat
 		env["RESTORE_MODE"] = string(restoreModeOf(inst))
 	}
 
-	storageType, storageSize, overrides := o.jobParams(ctx, db)
+	storageType, storageSize, overrides, ttl := o.jobParams(ctx, db)
 	return o.k8s.ReconcileCronJob(ctx, k8s.CronSpec{
 		Kind:            kind,
 		DatabaseID:      db.ID,
@@ -269,6 +270,8 @@ func (o *Operator) ensureCronJob(ctx context.Context, kind string, db *model.Dat
 		WorkDirSize:     storageSize,
 		Overrides:       overrides,
 		Env:             env,
+
+		TTLSecondsAfterFinished: ttl,
 	})
 }
 

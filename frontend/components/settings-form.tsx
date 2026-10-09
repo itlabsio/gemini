@@ -23,6 +23,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+// Границы TTL завершённых Job'ов в минутах — как на бэкенде (5 минут … 7 суток)
+const JOB_TTL_MIN = 5;
+const JOB_TTL_MAX = 7 * 24 * 60;
+
 export function SettingsForm({ initial }: { initial: Settings }) {
   const [pending, start] = useTransition();
 
@@ -44,6 +48,7 @@ export function SettingsForm({ initial }: { initial: Settings }) {
     ? JSON.stringify(initial.default_pod_scheduling, null, 2)
     : "";
   const [sched, setSched] = useState(initialSched);
+  const [ttl, setTtl] = useState(String(initial.job_ttl_minutes));
 
   const dirty =
     type !== initial.default_storage_type ||
@@ -52,7 +57,8 @@ export function SettingsForm({ initial }: { initial: Settings }) {
     reqMem !== (initial.default_resources?.requests?.memory ?? "") ||
     limCpu !== (initial.default_resources?.limits?.cpu ?? "") ||
     limMem !== (initial.default_resources?.limits?.memory ?? "") ||
-    sched.trim() !== initialSched.trim();
+    sched.trim() !== initialSched.trim() ||
+    ttl.trim() !== String(initial.job_ttl_minutes);
 
   function save() {
     let scheduling: Record<string, unknown> | null = null;
@@ -65,6 +71,18 @@ export function SettingsForm({ initial }: { initial: Settings }) {
       }
     }
 
+    const ttlMinutes = Number(ttl.trim());
+    if (
+      !Number.isInteger(ttlMinutes) ||
+      ttlMinutes < JOB_TTL_MIN ||
+      ttlMinutes > JOB_TTL_MAX
+    ) {
+      toast.error(
+        `TTL Job'ов: целое число минут от ${JOB_TTL_MIN} до ${JOB_TTL_MAX}`,
+      );
+      return;
+    }
+
     start(async () => {
       const res = await updateSettingsAction({
         default_storage_type: type,
@@ -74,6 +92,7 @@ export function SettingsForm({ initial }: { initial: Settings }) {
           limits: { cpu: limCpu || undefined, memory: limMem || undefined },
         },
         default_pod_scheduling: scheduling,
+        job_ttl_minutes: ttlMinutes,
       });
       if (res.ok) toast.success("Сохранено");
       else toast.error(res.error);
@@ -175,6 +194,33 @@ export function SettingsForm({ initial }: { initial: Settings }) {
             placeholder={'{\n  "nodeSelector": { "node-group": "backup" }\n}'}
             className="font-mono text-xs"
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Хранение завершённых Job’ов</CardTitle>
+          <CardDescription>
+            Через сколько минут после завершения k8s удаляет dump/restore-Job
+            вместе с подами и их логами (ttlSecondsAfterFinished). Применяется
+            к CronJob’ам при следующей сверке шаблонов (до ~6 минут); уже
+            созданные Job’ы сохраняют прежний TTL
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Field label="TTL, минуты" htmlFor="job_ttl_minutes" className="w-40">
+            <Input
+              id="job_ttl_minutes"
+              type="number"
+              inputMode="numeric"
+              min={JOB_TTL_MIN}
+              max={JOB_TTL_MAX}
+              step={1}
+              value={ttl}
+              onChange={(e) => setTtl(e.target.value)}
+              placeholder="5"
+            />
+          </Field>
         </CardContent>
       </Card>
 

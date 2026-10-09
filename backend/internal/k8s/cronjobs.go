@@ -15,6 +15,9 @@ import (
 // (31 февраля). Используется для suspend-CronJob'ов без расписания.
 const neverSchedule = "0 0 31 2 *"
 
+// defaultJobTTLSeconds — TTL завершённых Job'ов, если CronSpec его не задал.
+const defaultJobTTLSeconds int32 = 300
+
 // CronSpec — CronJob-шаблон прогона для одной базы. Создаётся ВСЕГДА для активной
 // базы: dump — на Source по расписанию, restore — на Target всегда в suspend.
 // «Запустить сейчас» триггерит Job из этого же шаблона (TriggerJobFromCronJob).
@@ -41,6 +44,9 @@ type CronSpec struct {
 
 	// Overrides — nodeSelector / tolerations / affinity / resources подов.
 	Overrides PodOverrides
+
+	// TTLSecondsAfterFinished — spec.ttlSecondsAfterFinished Job'ов; 0 → defaultJobTTLSeconds.
+	TTLSecondsAfterFinished int32
 }
 
 // CronJobName — детерминированное имя CronJob: gemini-<kind>-<databaseID>.
@@ -81,6 +87,10 @@ func (c *Client) ReconcileCronJob(ctx context.Context, s CronSpec) error {
 	}
 	schedule := s.Schedule
 	suspend := s.Suspend
+	ttl := s.TTLSecondsAfterFinished
+	if ttl <= 0 {
+		ttl = defaultJobTTLSeconds
+	}
 	if schedule == "" {
 		schedule = neverSchedule
 		suspend = true
@@ -159,7 +169,7 @@ func (c *Client) ReconcileCronJob(ctx context.Context, s CronSpec) error {
 				Spec: batchv1.JobSpec{
 					BackoffLimit:            int32Ptr(1),
 					ActiveDeadlineSeconds:   int64Ptr(6 * 3600),
-					TTLSecondsAfterFinished: int32Ptr(3600),
+					TTLSecondsAfterFinished: int32Ptr(ttl),
 					Template: corev1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{Labels: labels},
 						Spec:       pod,

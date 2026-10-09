@@ -276,8 +276,11 @@ type Settings struct {
 	// DefaultPodScheduling — nodeSelector / tolerations / affinity dump/restore-подов
 	// (JSON как в PodSpec). Перекрывает values чарта. Пусто → значения чарта.
 	DefaultPodScheduling json.RawMessage `json:"default_pod_scheduling,omitempty"`
-	UpdatedAt            time.Time       `json:"updated_at"`
-	UpdatedBy            string          `json:"updated_by"`
+	// JobTTLMinutes — через сколько минут после завершения k8s удаляет
+	// dump/restore-Job вместе с подами (spec.ttlSecondsAfterFinished).
+	JobTTLMinutes int32     `json:"job_ttl_minutes"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	UpdatedBy     string    `json:"updated_by"`
 }
 
 // User — кэш последних логинов для аудита UI.

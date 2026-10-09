@@ -137,6 +137,7 @@ export const updateSettings = (p: {
   default_storage_size: string;
   default_resources: ResourceSpec;
   default_pod_scheduling?: Record<string, unknown> | null;
+  job_ttl_minutes: number;
 }) => apiFetch<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(p) });
 
 export const listS3Buckets = () => apiFetch<S3Bucket[]>("/api/s3-buckets");

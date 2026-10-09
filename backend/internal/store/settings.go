@@ -16,10 +16,10 @@ func (s *Store) GetSettings(ctx context.Context) (*model.Settings, error) {
 	var schedJSON []byte
 	err := s.pool.QueryRow(ctx, `
 		SELECT default_storage_type, default_storage_size, default_resources,
-		       default_pod_scheduling, updated_at, updated_by
+		       default_pod_scheduling, job_ttl_minutes, updated_at, updated_by
 		FROM app_settings WHERE id = TRUE`,
 	).Scan(&st.DefaultStorageType, &st.DefaultStorageSize, &resJSON, &schedJSON,
-		&st.UpdatedAt, &st.UpdatedBy)
+		&st.JobTTLMinutes, &st.UpdatedAt, &st.UpdatedBy)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -38,6 +38,7 @@ type SettingsInput struct {
 	DefaultStorageSize   string
 	DefaultResources     model.ResourceSpec
 	DefaultPodScheduling json.RawMessage // JSON nodeSelector/tolerations/affinity; nil → '{}'
+	JobTTLMinutes        int32
 }
 
 // UpdateSettings перезаписывает singleton-строку.
@@ -53,9 +54,11 @@ func (s *Store) UpdateSettings(ctx context.Context, in SettingsInput, updatedBy 
 	_, err = s.pool.Exec(ctx, `
 		UPDATE app_settings
 		SET default_storage_type = $1, default_storage_size = $2, default_resources = $3,
-		    default_pod_scheduling = $4, updated_at = NOW(), updated_by = $5
+		    default_pod_scheduling = $4, job_ttl_minutes = $5,
+		    updated_at = NOW(), updated_by = $6
 		WHERE id = TRUE`,
-		in.DefaultStorageType, in.DefaultStorageSize, string(resJSON), schedJSON, updatedBy)
+		in.DefaultStorageType, in.DefaultStorageSize, string(resJSON), schedJSON,
+		in.JobTTLMinutes, updatedBy)
 	if err != nil {
 		return nil, err
 	}

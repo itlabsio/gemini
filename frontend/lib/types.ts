@@ -56,6 +56,8 @@ export interface Settings {
   default_storage_size: string;
   default_resources: ResourceSpec;
   default_pod_scheduling?: Record<string, unknown>;
+  /** Через сколько минут после завершения k8s удаляет dump/restore-Job */
+  job_ttl_minutes: number;
   updated_at: string;
   updated_by: string;
 }

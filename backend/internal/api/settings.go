@@ -2,11 +2,19 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/k8s"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/store"
+)
+
+// Границы TTL завершённых Job'ов (минуты) — как CHECK в миграции 015. Минимум —
+// чтобы watcher успел увидеть терминальный статус и забрать логи упавших подов.
+const (
+	minJobTTLMinutes = 5
+	maxJobTTLMinutes = 7 * 24 * 60
 )
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
@@ -23,9 +31,11 @@ type settingsRequest struct {
 	DefaultStorageSize   string             `json:"default_storage_size"`
 	DefaultResources     model.ResourceSpec `json:"default_resources"`
 	DefaultPodScheduling json.RawMessage    `json:"default_pod_scheduling"`
+	// 0 / не передан → текущее значение не меняется (старые клиенты).
+	JobTTLMinutes int32 `json:"job_ttl_minutes"`
 }
 
-// putSettings — админка: дефолты типа/размера временного хранилища и ресурсов Job'ов.
+// putSettings — админка: дефолты типа/размера временного хранилища, ресурсов и TTL Job'ов.
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	var req settingsRequest
 	if !decodeJSON(w, r, &req) {
@@ -68,12 +78,27 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	} else {
 		sched = nil
 	}
+	ttl := req.JobTTLMinutes
+	if ttl == 0 {
+		cur, err := s.d.Store.GetSettings(r.Context())
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		ttl = cur.JobTTLMinutes
+	}
+	if ttl < minJobTTLMinutes || ttl > maxJobTTLMinutes {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf(
+			"job_ttl_minutes must be between %d and %d", minJobTTLMinutes, maxJobTTLMinutes))
+		return
+	}
 	id, _ := ctxIdentity(r)
 	st, err := s.d.Store.UpdateSettings(r.Context(), store.SettingsInput{
 		DefaultStorageType:   req.DefaultStorageType,
 		DefaultStorageSize:   req.DefaultStorageSize,
 		DefaultResources:     req.DefaultResources,
 		DefaultPodScheduling: sched,
+		JobTTLMinutes:        ttl,
 	}, id)
 	if err != nil {
 		writeStoreError(w, err)

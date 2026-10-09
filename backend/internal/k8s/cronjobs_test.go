@@ -52,3 +52,33 @@ func TestReconcileCronJobInheritsImagePullPolicy(t *testing.T) {
 		t.Errorf("ImagePullSecrets = %v, want [harbor]", secs)
 	}
 }
+
+// TTL Job'ов берётся из CronSpec (настройка в UI), без него — дефолт 5 минут.
+func TestReconcileCronJobTTL(t *testing.T) {
+	const ns = "gemini"
+	for _, tc := range []struct {
+		name string
+		in   int32
+		want int32
+	}{
+		{"default", 0, defaultJobTTLSeconds},
+		{"custom", 30 * 60, 30 * 60},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cs := fake.NewSimpleClientset()
+			c := &Client{cs: cs, namespace: ns}
+			if err := c.ReconcileCronJob(context.Background(), CronSpec{
+				Kind: "dump", DatabaseID: "db1", TTLSecondsAfterFinished: tc.in,
+			}); err != nil {
+				t.Fatalf("ReconcileCronJob: %v", err)
+			}
+			cj, err := cs.BatchV1().CronJobs(ns).Get(context.Background(), CronJobName("dump", "db1"), metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("get cronjob: %v", err)
+			}
+			if got := cj.Spec.JobTemplate.Spec.TTLSecondsAfterFinished; got == nil || *got != tc.want {
+				t.Errorf("TTLSecondsAfterFinished = %v, want %d", got, tc.want)
+			}
+		})
+	}
+}
