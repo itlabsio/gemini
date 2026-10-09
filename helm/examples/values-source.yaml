@@ -1,0 +1,64 @@
+# Оверрайды для головы Source (текущий контур).
+#   helm install gemini-source ./helm/gemini -f helm/examples/values-source.yaml -n gemini --create-namespace
+
+headRole: source
+
+# publicUrl не задан — выводится из ingress (https://gemini.source.example.com)
+
+image:
+  backend:
+    tag: "0.1.0"
+  frontend:
+    tag: "0.1.0"
+
+oidc:
+  issuerUrl: https://keycloak.example.com/realms/gemini
+  clientId: gemini
+  existingSecret: gemini-oidc
+
+ownDatabase:
+  existingSecret: gemini-db-credentials      # POSTGRES_URL до Pigsty-кластера метаданных
+encryptionKey:
+  existingSecret: gemini-encryption-key
+
+s3:
+  bucket: gemini-dumps
+  existingSecret: gemini-s3-credentials
+
+vault:
+  enabled: true
+  addr: https://vault.example.com:8200
+  authMethod: kubernetes
+  role: gemini
+
+notify:
+  enabled: true
+  provider: slack
+  existingSecret: gemini-notify
+
+job:
+  storage:
+    className: yc-network-ssd
+  nodeSelector:
+    node-group: db-backup
+  tolerations:
+    - key: node-group
+      operator: Equal
+      value: db-backup
+      effect: NoSchedule
+  resources:
+    requests: { cpu: "1", memory: 1Gi }
+    limits: { cpu: "3", memory: 4Gi }
+
+rbac:
+  create: true
+  storageClassRead: true
+
+ingress:
+  enabled: true
+  className: nginx
+  host: gemini.source.example.com
+  tls: true
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "16m"

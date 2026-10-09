@@ -1,0 +1,88 @@
+name: release
+
+# Публикация в ghcr.io — только по git-тегу vX.Y.Z:
+#   образы ghcr.io/<repo>/{backend,frontend}:X.Y.Z
+#   чарт   oci://ghcr.io/<repo>/charts/gemini  версии X.Y.Z (appVersion = X.Y.Z)
+# В pull request образы только собираются, чарт только линтуется.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths: [backend/**, frontend/**, helm/**, .github/workflows/release.yml]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # metadata-action сам приводит имя образа к нижнему регистру.
+      # latest=auto: latest ставится только на semver-тег без pre-release (v1.2.3, не v1.2.3-rc.1).
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/${{ matrix.component }}
+          flavor: latest=auto
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=pr
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.component }}
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+
+  chart:
+    # Чарт публикуется после образов, чтобы не ссылаться на несуществующий тег.
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: azure/setup-helm@v4
+
+      - name: Lint
+        run: |
+          for f in helm/examples/values-*.yaml; do
+            helm lint helm/gemini -f "$f"
+            helm template gemini helm/gemini -f "$f" >/dev/null
+          done
+
+      - name: Package & push
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "$GH_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          helm package helm/gemini --version "$version" --app-version "$version" -d dist
+          helm push "dist/gemini-$version.tgz" "oci://ghcr.io/${GITHUB_REPOSITORY,,}/charts"

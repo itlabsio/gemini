@@ -1,0 +1,16 @@
+apiVersion: v2
+name: gemini
+description: >-
+  СРК Gemini — одна "голова" (backend + frontend) DR-системы логической
+  репликации PostgreSQL. Роль (source|dr) задаётся через values.headRole.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+icon: https://helm.sh/img/helm.svg
+keywords:
+  - backup
+  - disaster-recovery
+  - postgresql
+  - restore
+maintainers:
+  - name: devops

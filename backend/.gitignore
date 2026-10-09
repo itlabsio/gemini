@@ -1,0 +1,5 @@
+/gemini
+/out/
+*.test
+.env.local
+coverage.out

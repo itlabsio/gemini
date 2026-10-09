@@ -1,0 +1,47 @@
+Gemini ({{ .Values.headRole | upper }}) установлен как релиз {{ .Release.Name }} в namespace {{ .Release.Namespace }}.
+
+Backend:  {{ include "gemini.fullname" . }}-backend  ({{ include "gemini.backend.image" . }})
+Frontend: {{ include "gemini.fullname" . }}-frontend ({{ include "gemini.frontend.image" . }})
+Job image: {{ include "gemini.job.image" . }}
+
+Роль головы: {{ .Values.headRole }}
+{{- if eq .Values.headRole "source" }}
+  • активен scheduler: CronJob'ы по Database.schedule_cron
+  • webhook: POST /webhook/restore-status (приём от target-головы)
+  • pairing: POST /api/pairing/issue-code
+{{- else }}
+  • активен fallback-поллинг S3 каждые {{ .Values.poller.interval }}
+  • webhook: POST /webhook/backup-ready (приём от source-головы)
+  • pairing: POST /api/pairing/init
+{{- end }}
+
+{{- if .Values.migrate.enabled }}
+
+Миграции своей БД метаданных накатывает Job {{ include "gemini.fullname" . }}-migrate
+ДО выката backend: helm hook pre-install,pre-upgrade либо Argo CD PreSync-хук.
+Если backend всё же пишет "pending migrations" — Job не отработал, смотрите его логи.
+{{- end }}
+
+Обязательные внешние Secret'ы (чарт их НЕ создаёт):
+  {{ .Values.ownDatabase.existingSecret }}       -> POSTGRES_URL
+  {{ .Values.encryptionKey.existingSecret }}     -> SECRET_ENCRYPTION_KEY (ровно 32 байта)
+  {{ .Values.s3.existingSecret }}                -> S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY
+  {{ .Values.oidc.existingSecret }}              -> KEYCLOAK_CLIENT_SECRET, AUTH_SECRET (для frontend)
+{{- if .Values.notify.enabled }}
+  {{ .Values.notify.existingSecret }}            -> NOTIFY_WEBHOOK_URL{{ if eq .Values.notify.provider "telegram" }}, NOTIFY_TELEGRAM_CHAT_ID{{ end }}
+{{- end }}
+{{- if and .Values.vault.enabled (eq .Values.vault.authMethod "token") }}
+  {{ .Values.vault.existingSecret }}             -> VAULT_TOKEN
+{{- end }}
+
+{{- if .Values.ingress.enabled }}
+
+URL: {{ include "gemini.externalUrl" . }}
+{{- else }}
+
+Ingress выключен. Проброс для проверки:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "gemini.fullname" . }}-frontend 3000:{{ .Values.service.frontendPort }}
+{{- end }}
+
+Проверить:
+  kubectl -n {{ .Release.Namespace }} get deploy,po,cronjob -l app.kubernetes.io/instance={{ .Release.Name }}

@@ -1,0 +1,56 @@
+{{- if .Values.ingress.enabled }}
+{{- $fullName := include "gemini.fullname" . -}}
+{{- $backendSvc := printf "%s-backend" $fullName -}}
+{{- $frontendSvc := printf "%s-frontend" $fullName -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "gemini.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      {{- with .Values.ingress.tlsSecret }}
+      secretName: {{ . }}
+      {{- end }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          # NextAuth (OIDC-логин и callback) обслуживает frontend.
+          # Более специфичный префикс, чем /api → backend ниже (nginx матчит по длине).
+          - path: /api/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $frontendSvc }}
+                port:
+                  number: {{ .Values.service.frontendPort }}
+          # Межголовые и API-пути обслуживает backend (health-probes наружу не выставляем)
+          {{- range $p := list "/api" "/peer" "/webhook" "/pairing/exchange" }}
+          - path: {{ $p }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $backendSvc }}
+                port:
+                  number: {{ $.Values.service.backendPort }}
+          {{- end }}
+          # Всё остальное — SPA
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $frontendSvc }}
+                port:
+                  number: {{ .Values.service.frontendPort }}
+{{- end }}

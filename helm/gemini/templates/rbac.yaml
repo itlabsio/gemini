@@ -1,0 +1,95 @@
+{{- if .Values.rbac.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "gemini.serviceAccountName" . }}
+  labels:
+    {{- include "gemini.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.job.serviceAccount }}
+  labels:
+    {{- include "gemini.labels" . | nindent 4 }}
+    app.kubernetes.io/component: job
+{{- if .Values.vault.enabled }}
+  {{- with .Values.vault.saAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+---
+# namespace-scoped права оператора (раздел 6 плана)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "gemini.fullname" . }}
+  labels:
+    {{- include "gemini.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["cronjobs", "jobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # controller: true в ownerReference ручного Job'а на его CronJob —
+  # при включённом OwnerReferencesPermissionEnforcement нужен доступ к finalizers
+  - apiGroups: ["batch"]
+    resources: ["cronjobs/finalizers"]
+    verbs: ["update"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  # UID своего Deployment'а для ownerReference на Job/CronJob/Secret (только он)
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get"]
+    resourceNames: ["{{ include "gemini.fullname" . }}-backend"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "gemini.fullname" . }}
+  labels:
+    {{- include "gemini.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "gemini.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "gemini.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- if and .Values.rbac.create .Values.rbac.storageClassRead }}
+---
+# StorageClass — cluster-scoped ресурс, поэтому ClusterRole (раздел 6, п. про RBAC)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "gemini.fullname" . }}-storageclass-read
+  labels:
+    {{- include "gemini.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "gemini.fullname" . }}-storageclass-read
+  labels:
+    {{- include "gemini.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "gemini.fullname" . }}-storageclass-read
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "gemini.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

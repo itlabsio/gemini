@@ -1,0 +1,39 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "gemini.fullname" . }}-backend
+  labels:
+    {{- include "gemini.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "gemini.backend.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # k8s API + внешние HTTPS (OIDC/JWKS, S3, webhook второй головы, notify)
+    - ports:
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 6443 }
+{{- if .Values.vault.enabled }}
+    # Vault API (in-cluster обычно на 8200; при Vault за HTTPS/443 покрывается правилом выше)
+    - ports:
+        - { protocol: TCP, port: 8200 }
+{{- end }}
+    # PostgreSQL (source/target + собственная БД метаданных)
+    - ports:
+        - { protocol: TCP, port: 5432 }
+        - { protocol: TCP, port: 6432 }
+{{- with .Values.networkPolicy.extraEgressPorts }}
+    # Кастомные порты (нестандартные PostgreSQL/pgbouncer, self-hosted OIDC/S3 и т.п.)
+    - ports:
+        {{- toYaml . | nindent 8 }}
+{{- end }}
+{{- end }}

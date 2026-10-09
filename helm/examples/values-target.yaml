@@ -1,0 +1,74 @@
+# Оверрайды для головы target (DR-контур).
+#   helm install gemini-target ./helm/gemini -f helm/examples/values-target.yaml -n gemini --create-namespace
+#
+# Стратегия restore (recreate | in_place) и роль-владелец восстановленной базы
+# задаются в UI: режим — в форме target-инстанса, владелец — в сопоставлении баз.
+# Для MDB-инстансов ставьте in_place; базу и роль-владельца заводите через консоль
+# Yandex Cloud, restorer'у там же выдавайте членство в роли-владельце.
+
+headRole: target
+
+# publicUrl не задан — выводится из ingress (https://gemini.target.example.com)
+
+image:
+  backend:
+    tag: "0.1.0"
+  frontend:
+    tag: "0.1.0"
+
+oidc:
+  # DR может использовать свой Keycloak — токен всё равно валидируется локально
+  issuerUrl: https://keycloak.target.example.com/realms/gemini
+  clientId: gemini
+  existingSecret: gemini-oidc
+
+ownDatabase:
+  existingSecret: gemini-db-credentials
+encryptionKey:
+  existingSecret: gemini-encryption-key
+
+s3:
+  # тот же бакет, что и Source (общее промежуточное хранилище)
+  bucket: gemini-dumps
+  existingSecret: gemini-s3-credentials
+
+vault:
+  enabled: true
+  addr: https://vault.target.example.com:8200
+  authMethod: kubernetes
+  role: gemini
+
+notify:
+  enabled: true
+  provider: telegram
+  existingSecret: gemini-notify
+
+poller:
+  interval: 5m
+
+job:
+  storage:
+    className: yc-network-ssd
+  nodeSelector:
+    node-group: db-backup
+  tolerations:
+    - key: node-group
+      operator: Equal
+      value: db-backup
+      effect: NoSchedule
+  resources:
+    requests: { cpu: "1", memory: 1Gi }
+    limits: { cpu: "3", memory: 4Gi }
+
+rbac:
+  create: true
+  storageClassRead: true
+
+ingress:
+  enabled: true
+  className: nginx
+  host: gemini.target.example.com
+  tls: true
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "16m"

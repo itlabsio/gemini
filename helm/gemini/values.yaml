@@ -1,0 +1,254 @@
+# -- Роль головы: source (текущий контур, инициатор расписания) | target (DR-контур, restore)
+headRole: source
+
+# -- Переопределяет имя в шаблонах (app.kubernetes.io/name); пусто = Chart.Name
+nameOverride: ""
+# -- Переопределяет префикс имён ресурсов (Deployment/Service/Ingress/...); пусто = Release.Name
+fullnameOverride: ""
+
+image:
+  backend:
+    # -- Репозиторий образа backend
+    repository: ghcr.io/itlabsio/gemini/backend
+    # -- Тег. Пусто = appVersion чарта
+    tag: ""
+    # -- Политика загрузки образа backend
+    pullPolicy: IfNotPresent
+  frontend:
+    # -- Репозиторий образа frontend
+    repository: ghcr.io/itlabsio/gemini/frontend
+    # -- Тег. Пусто = appVersion чарта
+    tag: ""
+    # -- Политика загрузки образа frontend
+    pullPolicy: IfNotPresent
+
+# -- Секреты для доступа к приватному registry (imagePullSecrets пода)
+imagePullSecrets: []
+
+# -- Внешний URL этой головы (нужен второй голове для обратных webhook'ов).
+#    Пусто и включён ingress с host -> выводится автоматически: https://host (tls) | http://host.
+#    Задавать вручную только если ingress выключен или пиру нужен другой хостнейм.
+publicUrl: ""
+
+backend:
+  # -- Число реплик backend
+  replicas: 1
+  # -- Сколько старых ReplicaSet'ов хранить для отката
+  revisionHistoryLimit: 1
+  # -- Дополнительные env (несекретные)
+  extraEnv: []
+  # -- requests/limits контейнера backend
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: "1", memory: 512Mi}
+  # -- Дополнительные аннотации пода backend
+  podAnnotations: {}
+  # -- nodeSelector пода backend
+  nodeSelector: {}
+  # -- tolerations пода backend
+  tolerations: []
+  # -- affinity пода backend
+  affinity: {}
+  # -- securityContext пода backend. uid/gid зашиты в образе (10001).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+
+frontend:
+  # -- Число реплик frontend
+  replicas: 1
+  # -- Сколько старых ReplicaSet'ов хранить для отката
+  revisionHistoryLimit: 1
+  # -- Дополнительные env (несекретные)
+  extraEnv: []
+  # -- requests/limits контейнера frontend
+  resources:
+    requests: {cpu: 25m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  # -- Дополнительные аннотации пода frontend
+  podAnnotations: {}
+  # -- nodeSelector пода frontend
+  nodeSelector: {}
+  # -- tolerations пода frontend
+  tolerations: []
+  # -- affinity пода frontend
+  affinity: {}
+  # -- securityContext пода frontend. uid/gid зашиты в образе Next.js (1001).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroup: 1001
+    seccompProfile:
+      type: RuntimeDefault
+
+oidc:
+  # -- URL issuer'а OIDC (realm Keycloak)
+  issuerUrl: https://keycloak.example.com/realms/gemini
+  # -- Единый clientId frontend и backend: фронт логинится через него (code+PKCE),
+  #    backend проверяет по нему azp/aud и читает resource_access.<clientId>.roles
+  #    (client-роли ровно viewer / operator / admin).
+  clientId: gemini
+  # -- k8s Secret для frontend (next-auth) с ключами:
+  #    KEYCLOAK_CLIENT_SECRET, AUTH_SECRET. Backend этот секрет не использует.
+  existingSecret: gemini-oidc
+
+ownDatabase:
+  # -- k8s Secret с ключом POSTGRES_URL (dsn собственной БД метаданных).
+  #    Чарт свою БД НЕ разворачивает — ожидается внешний PostgreSQL с расширением
+  #    pgcrypto (роль dsn должна иметь право CREATE EXTENSION либо pgcrypto
+  #    предустановлен). Миграции накатывает отдельный Job (helm hook).
+  existingSecret: gemini-db-credentials
+
+# -- k8s Secret с ключом SECRET_ENCRYPTION_KEY (ровно 32 байта) для шифрования
+#    plain-паролей подключений в собственной БД at rest.
+encryptionKey:
+  existingSecret: gemini-encryption-key
+
+# Встроенный бакет дампов. Дополнительные бакеты добавляются в UI
+# (Настройки → S3-бакеты); дамп заливается во все включённые.
+s3:
+  # -- Endpoint S3-совместимого хранилища дампов
+  endpoint: storage.yandexcloud.net
+  # -- Регион S3
+  region: ru-central1
+  # -- Бакет для дампов
+  bucket: gemini-dumps
+  # -- Path-style адресация бакета (вместо virtual-hosted)
+  pathStyle: true
+  # -- Использовать HTTPS при обращении к S3
+  useSSL: true
+  # -- k8s Secret с ключами S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY
+  existingSecret: gemini-s3-credentials
+
+vault:
+  # -- Включить интеграцию с Vault для секретов подключений
+  enabled: false
+  # -- Адрес Vault
+  addr: https://vault.example.com:8200
+  # -- Метод аутентификации: kubernetes (по SA-токену пода) | token.
+  #    Это НЕ имя auth-бэкенда в Vault — оно задаётся в k8sMount ниже.
+  authMethod: kubernetes
+  # -- Путь монтирования kubernetes auth-бэкенда в Vault (`vault auth list`).
+  #    Дефолт Vault — "kubernetes"; в инсталляциях его часто монтируют иначе.
+  k8sMount: kubernetes
+  # -- Vault-роль, на которую логинится SA backend'а
+  role: gemini
+  # -- нужен только при authMethod=token; k8s Secret с ключом VAULT_TOKEN
+  existingSecret: ""
+  # -- аннотации для job-ServiceAccount (например, для Vault Agent Injector)
+  saAnnotations: {}
+
+notify:
+  # -- Включить отправку уведомлений о результатах dump/restore
+  enabled: false
+  # -- slack | telegram
+  provider: slack
+  # -- k8s Secret с ключом NOTIFY_WEBHOOK_URL (+ NOTIFY_TELEGRAM_CHAT_ID для telegram)
+  existingSecret: gemini-notify
+
+poller:
+  # -- Период fallback-поллинга S3 (только target-голова)
+  interval: 5m
+
+peerRetry:
+  # -- Начальная задержка ретрая межголовых запросов
+  initialDelay: 1s
+  # -- Максимальная задержка ретрая (экспоненциальный backoff)
+  maxDelay: 60s
+  # -- Максимальное число попыток
+  maxAttempts: 5
+  # -- Допустимое расхождение часов между головами
+  clockSkew: 30s
+
+migrate:
+  # -- Запускать миграции своей БД метаданных как Job (helm hook post-install,post-upgrade)
+  enabled: true
+  # -- backoffLimit Job'а миграции
+  backoffLimit: 3
+
+job:
+  # -- SA, под которым бегают dump/restore-поды (создаётся при rbac.create)
+  serviceAccount: gemini-job
+  # -- образ Job'ов; пусто = image.backend (тот же бинарь, подкоманды dump/restore)
+  image: ""
+  # -- Таймзона расписаний CronJob (spec.timeZone)
+  timezone: Asia/Yekaterinburg
+  storage:
+    # -- Дефолтный тип временного хранилища дампа: ephemeral (generic ephemeral PVC) | emptydir.
+    #    Переопределяется в UI (админка) и на каждую базу отдельно.
+    type: ephemeral
+    # -- Дефолтный размер тома дампа
+    size: 20Gi
+    # -- storageClass для ephemeral-тома (нужен volumeBindingMode: WaitForFirstConsumer)
+    className: yc-network-ssd
+  # -- nodeSelector dump/restore-подов (Job и CronJob)
+  nodeSelector: {}
+  # -- tolerations dump/restore-подов
+  tolerations: []
+  # -- affinity dump/restore-подов
+  affinity: {}
+  # -- requests/limits dump/restore-контейнера. {} = встроенные дефолты бэкенда
+  #    (500m/512Mi .. 2/2Gi). Можно менять и в UI (админка).
+  resources: {}
+
+rbac:
+  # -- Создавать ServiceAccount + namespaced Role/RoleBinding
+  create: true
+  # -- Создавать ClusterRole/ClusterRoleBinding на чтение storageclasses
+  storageClassRead: true
+  # -- Имя ServiceAccount backend-пода
+  serviceAccountName: gemini
+
+service:
+  # -- Тип Service (ClusterIP | NodePort | LoadBalancer)
+  type: ClusterIP
+  # -- Порт Service backend
+  backendPort: 8080
+  # -- Порт Service frontend
+  frontendPort: 3000
+
+ingress:
+  # -- Создавать Ingress для головы
+  enabled: false
+  # -- ingressClassName
+  className: nginx
+  # -- Аннотации ingress.
+  #    proxy-buffer-size поднят под Set-Cookie next-auth (дефолтных 4k не
+  #    хватает: "upstream sent too big header").
+  #    limit-* — рейт-лимит: /pairing/exchange, /peer и /webhook доступны из
+  #    интернета по определению (вторая голова живёт в другом контуре), а само
+  #    приложение лимитировать по IP не может — за ingress все клиентские адреса
+  #    одинаковые, а X-Forwarded-For подделывается. Значения под интерактивную
+  #    админку: межголовых запросов единицы в час.
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "8k"
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
+  # -- Хост головы. /api/auth → frontend; /api, /peer, /webhook, /pairing/exchange → backend; / → frontend.
+  #    При enabled=true и заданном host отсюда выводится publicUrl (если он не задан явно).
+  host: gemini.example.com
+  # -- Включить TLS на ingress
+  tls: true
+  # -- Имя k8s Secret с TLS-сертификатом; пусто = <host>-tls
+  tlsSecret: ""
+
+networkPolicy:
+  # -- Ограничить исходящий трафик backend'а (DNS + HTTPS + PostgreSQL). Точечная настройка — на стороне кластера.
+  enabled: false
+  # -- Дополнительные порты egress сверх встроенных (DNS/443/6443/5432/6432).
+  #    Список объектов k8s NetworkPolicyPort, например:
+  #    [{protocol: TCP, port: 5433}, {protocol: TCP, port: 9000}]
+  extraEgressPorts: []
+
+# -- securityContext контейнеров (общий для backend/frontend/job — без uid/gid)
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]

@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gemini.fullname" . }}-backend
+  labels:
+    {{- include "gemini.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicas }}
+  revisionHistoryLimit: {{ .Values.backend.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "gemini.backend.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/backend/configmap.yaml") . | sha256sum }}
+        {{- with .Values.backend.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "gemini.backend.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "gemini.serviceAccountName" . }}
+      # backend'у нужен токен SA: k8s API (Job/CronJob/Secret) и — при vault.authMethod=kubernetes — логин в Vault
+      automountServiceAccountToken: true
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.backend.podSecurityContext | nindent 8 }}
+      # Миграции накатывает отдельный Job (templates/backend/migrate-job.yaml,
+      # helm pre-hook / Argo PreSync), не initContainer — при serve бэкенд лишь
+      # проверяет, что схема актуальна.
+      containers:
+        - name: backend
+          image: {{ include "gemini.backend.image" . }}
+          imagePullPolicy: {{ .Values.image.backend.pullPolicy }}
+          args: ["serve"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.backendPort }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "gemini.fullname" . }}-backend
+            - secretRef:
+                name: {{ .Values.ownDatabase.existingSecret }}
+            - secretRef:
+                name: {{ .Values.encryptionKey.existingSecret }}
+            - secretRef:
+                name: {{ .Values.s3.existingSecret }}
+            {{- if .Values.notify.enabled }}
+            - secretRef:
+                name: {{ .Values.notify.existingSecret }}
+            {{- end }}
+            {{- if and .Values.vault.enabled (eq .Values.vault.authMethod "token") .Values.vault.existingSecret }}
+            - secretRef:
+                name: {{ .Values.vault.existingSecret }}
+            {{- end }}
+          {{- with .Values.backend.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health/livez
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health/readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            # readyz ходит в БД, S3 и Vault — дефолтного timeoutSeconds: 1 мало
+            timeoutSeconds: 6
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+      {{- with .Values.backend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

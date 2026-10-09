@@ -1,0 +1,70 @@
+{{- if .Values.migrate.enabled }}
+{{- include "gemini.validateRole" . -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "gemini.fullname" . }}-migrate
+  labels:
+    {{- include "gemini.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    # Миграции обязаны накатиться ДО выката backend (serve падает на pending migrations).
+    # helm install/upgrade — через helm-хук; Argo CD — через свой PreSync-хук
+    # (helm post-хук в Argo не срабатывал бы: PostSync ждёт Healthy, а backend без
+    #  миграций Healthy не станет — дедлок).
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: {{ .Values.migrate.backoffLimit }}
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        {{- include "gemini.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      # pre-хук выполняется РАНЬШE, чем создаётся ServiceAccount gemini
+      # (и в helm, и в Argo PreSync) — миграции не ходят в k8s API, хватает default.
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.backend.podSecurityContext | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "gemini.backend.image" . }}
+          imagePullPolicy: {{ .Values.image.backend.pullPolicy }}
+          args: ["migrate"]
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          env:
+            - name: HEAD_ROLE
+              value: {{ .Values.headRole | quote }}
+            - name: OIDC_ISSUER_URL
+              value: {{ .Values.oidc.issuerUrl | quote }}
+            - name: OIDC_CLIENT_ID
+              value: {{ .Values.oidc.clientId | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.ownDatabase.existingSecret }}
+            - secretRef:
+                name: {{ .Values.encryptionKey.existingSecret }}
+      {{- with .Values.backend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

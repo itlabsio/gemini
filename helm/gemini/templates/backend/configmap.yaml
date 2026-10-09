@@ -1,0 +1,54 @@
+{{- include "gemini.validateRole" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "gemini.fullname" . }}-backend
+  labels:
+    {{- include "gemini.labels" . | nindent 4 }}
+data:
+  HEAD_ROLE: {{ .Values.headRole | quote }}
+  LISTEN_ADDR: ":{{ .Values.service.backendPort }}"
+  {{- with (include "gemini.publicUrl" .) }}
+  PUBLIC_URL: {{ . | quote }}
+  {{- end }}
+
+  OIDC_ISSUER_URL: {{ .Values.oidc.issuerUrl | quote }}
+  OIDC_CLIENT_ID: {{ .Values.oidc.clientId | quote }}
+
+  S3_ENDPOINT: {{ .Values.s3.endpoint | quote }}
+  S3_REGION: {{ .Values.s3.region | quote }}
+  S3_BUCKET: {{ .Values.s3.bucket | quote }}
+  S3_PATH_STYLE: {{ .Values.s3.pathStyle | quote }}
+  S3_USE_SSL: {{ .Values.s3.useSSL | quote }}
+
+  VAULT_ENABLED: {{ .Values.vault.enabled | quote }}
+  {{- if .Values.vault.enabled }}
+  VAULT_ADDR: {{ .Values.vault.addr | quote }}
+  VAULT_AUTH_METHOD: {{ .Values.vault.authMethod | quote }}
+  VAULT_K8S_MOUNT: {{ .Values.vault.k8sMount | quote }}
+  VAULT_K8S_ROLE: {{ .Values.vault.role | quote }}
+  {{- end }}
+
+  NOTIFY_ENABLED: {{ .Values.notify.enabled | quote }}
+  {{- if .Values.notify.enabled }}
+  NOTIFY_PROVIDER: {{ .Values.notify.provider | quote }}
+  {{- end }}
+
+  POLL_INTERVAL: {{ .Values.poller.interval | quote }}
+  PEER_RETRY_INITIAL_DELAY: {{ .Values.peerRetry.initialDelay | quote }}
+  PEER_RETRY_MAX_DELAY: {{ .Values.peerRetry.maxDelay | quote }}
+  PEER_RETRY_MAX_ATTEMPTS: {{ .Values.peerRetry.maxAttempts | quote }}
+  PEER_CLOCK_SKEW: {{ .Values.peerRetry.clockSkew | quote }}
+
+  K8S_NAMESPACE: {{ .Release.Namespace | quote }}
+  JOB_IMAGE: {{ include "gemini.job.image" . | quote }}
+  JOB_SERVICE_ACCOUNT: {{ .Values.job.serviceAccount | quote }}
+  # Deployment backend'а: голова берёт у него UID (ownerReference для Job/CronJob/Secret),
+  # imagePullSecrets и лейбл app.kubernetes.io/instance.
+  JOB_OWNER_DEPLOYMENT: {{ printf "%s-backend" (include "gemini.fullname" .) | quote }}
+  JOB_STORAGE_CLASS: {{ .Values.job.storage.className | quote }}
+  JOB_STORAGE_TYPE: {{ .Values.job.storage.type | quote }}
+  JOB_WORKDIR_SIZE: {{ .Values.job.storage.size | quote }}
+  JOB_TIMEZONE: {{ .Values.job.timezone | quote }}
+  # nodeSelector / tolerations / affinity / resources dump/restore-подов — JSON как в PodSpec
+  JOB_POD_OVERRIDES: {{ include "gemini.job.podOverrides" . | quote }}
