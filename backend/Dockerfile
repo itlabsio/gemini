@@ -2,8 +2,7 @@ FROM golang:1.27-alpine AS build
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /src
-RUN sed -i 's|https://dl-cdn.alpinelinux.org|https://mirror.yandex.ru/mirrors|g' /etc/apk/repositories && \
-    apk update && \
+RUN apk update && \
     apk upgrade && \
     apk add ca-certificates && \
     update-ca-certificates
@@ -28,8 +27,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 FROM alpine:3 AS final
 ADD "https://storage.yandexcloud.net/cloud-certs/CA.pem" /usr/local/share/ca-certificates/YandexCA.crt
 ADD "https://storage.yandexcloud.net/itlabs-ca/devops/root.crt" /usr/local/share/ca-certificates/itlabs-devops-root.crt
-RUN sed -i 's|https://dl-cdn.alpinelinux.org|https://mirror.yandex.ru/mirrors|g' /etc/apk/repositories && \
-    apk update && \
+RUN apk update && \
     apk upgrade && \
     apk add ca-certificates postgresql16-client postgresql17-client postgresql18-client tzdata && \
     update-ca-certificates && \
