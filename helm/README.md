@@ -21,7 +21,7 @@ helm install gemini-dr     ./gemini -f examples/values-dr.yaml     -n gemini --c
 | Job `*-migrate` (helm `pre-install,pre-upgrade` + Argo CD `PreSync`) | `migrate.enabled` |
 | ConfigMap `*-backend`, `*-frontend` | всегда |
 | ServiceAccount `gemini` + `gemini-job` | `rbac.create` |
-| namespaced Role/RoleBinding (`cronjobs`,`jobs`,`secrets`,`pods`,`pods/log`,`deployments:get`) | `rbac.create` |
+| namespaced Role/RoleBinding (`cronjobs`,`jobs`,`secrets`,`pods`,`pods/log`,`events:list`,`deployments:get`) | `rbac.create` |
 | ClusterRole/ClusterRoleBinding на `storageclasses` (read) | `rbac.create && rbac.storageClassRead` |
 | Ingress (`/api/auth` → frontend; `/api`,`/peer`,`/webhook`,`/pairing/exchange` → backend; `/` → frontend; health-probes наружу не выставляются) | `ingress.enabled` |
 | NetworkPolicy (egress backend: DNS + 443/6443 + 5432/6432, +8200 при `vault.enabled`) | `networkPolicy.enabled` |

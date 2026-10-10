@@ -58,6 +58,8 @@ export interface Settings {
   default_pod_scheduling?: Record<string, unknown>;
   /** Через сколько минут после завершения k8s удаляет dump/restore-Job */
   job_ttl_minutes: number;
+  /** Сколько минут ждать старта пода Job'а, потом прогон → failed */
+  job_pod_start_timeout_minutes: number;
   updated_at: string;
   updated_by: string;
 }

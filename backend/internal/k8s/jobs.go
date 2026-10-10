@@ -7,6 +7,7 @@ import (
 	"log"
 	"sort"
 	"strings"
+	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -32,6 +33,7 @@ type JobStatus struct {
 	Trigger    string // "manual" | "scheduled" | ""
 	Phase      Phase
 	Message    string
+	Created    time.Time
 }
 
 // TriggerJobFromCronJob создаёт Job из шаблона CronJob'а базы — ручной запуск
@@ -166,6 +168,79 @@ func (c *Client) FailureDetail(ctx context.Context, jobName string) string {
 	return ""
 }
 
+// PodNotStarted проверяет, что у Job'а так и не запустился ни один под: подов
+// нет (контроллер не может их создать — FailedCreate) или все висят в Pending.
+// reason — причина для прогона: событие Job'а, условие планирования или
+// ожидание контейнера (ErrImagePull, …). При ошибке API — false: не рубим
+// Job вслепую.
+func (c *Client) PodNotStarted(ctx context.Context, jobName string) (stuck bool, reason string) {
+	pods, err := c.cs.CoreV1().Pods(c.namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: "job-name=" + jobName,
+	})
+	if err != nil {
+		log.Printf("k8s: list pods of job %s: %v", jobName, err)
+		return false, ""
+	}
+	for i := range pods.Items {
+		if pods.Items[i].Status.Phase != corev1.PodPending {
+			return false, ""
+		}
+	}
+	if len(pods.Items) == 0 {
+		if msg := c.lastWarningEvent(ctx, "Job", jobName); msg != "" {
+			return true, "поды Job'а не создаются: " + msg
+		}
+		return true, "поды Job'а не создаются"
+	}
+	sort.Slice(pods.Items, func(i, j int) bool {
+		return pods.Items[i].CreationTimestamp.After(pods.Items[j].CreationTimestamp.Time)
+	})
+	pod := &pods.Items[0]
+	for _, cs := range pod.Status.ContainerStatuses {
+		if w := cs.State.Waiting; w != nil && w.Reason != "" && w.Reason != "ContainerCreating" {
+			return true, fmt.Sprintf("под %s не стартовал: %s %s", pod.Name, w.Reason, strings.TrimSpace(w.Message))
+		}
+	}
+	for _, cond := range pod.Status.Conditions {
+		if cond.Type == corev1.PodScheduled && cond.Status == corev1.ConditionFalse {
+			return true, fmt.Sprintf("под %s не запланирован: %s", pod.Name, strings.TrimSpace(cond.Message))
+		}
+	}
+	if msg := c.lastWarningEvent(ctx, "Pod", pod.Name); msg != "" {
+		return true, fmt.Sprintf("под %s не стартовал: %s", pod.Name, msg)
+	}
+	return true, fmt.Sprintf("под %s не стартовал (Pending)", pod.Name)
+}
+
+// lastWarningEvent — текст последнего Warning-события объекта ("" если нет или
+// нет прав на events).
+func (c *Client) lastWarningEvent(ctx context.Context, kind, name string) string {
+	evs, err := c.cs.CoreV1().Events(c.namespace).List(ctx, metav1.ListOptions{
+		FieldSelector: "involvedObject.kind=" + kind + ",involvedObject.name=" + name + ",type=Warning",
+	})
+	if err != nil || len(evs.Items) == 0 {
+		return ""
+	}
+	last := &evs.Items[0]
+	for i := range evs.Items {
+		e := &evs.Items[i]
+		if eventTime(e).After(eventTime(last)) {
+			last = e
+		}
+	}
+	return strings.TrimSpace(last.Reason + ": " + last.Message)
+}
+
+func eventTime(e *corev1.Event) time.Time {
+	if !e.LastTimestamp.IsZero() {
+		return e.LastTimestamp.Time
+	}
+	if !e.EventTime.IsZero() {
+		return e.EventTime.Time
+	}
+	return e.CreationTimestamp.Time
+}
+
 // containerErrorLog берёт хвост логов контейнера и выбирает строки, похожие на
 // причину падения; если явных маркеров нет — последнюю непустую строку.
 func (c *Client) containerErrorLog(ctx context.Context, podName, containerName string) string {
@@ -235,6 +310,7 @@ func jobStatus(j *batchv1.Job) JobStatus {
 		Kind:       j.Labels[LabelComponent],
 		Trigger:    j.Labels[LabelTrigger],
 		Phase:      PhaseRunning,
+		Created:    j.CreationTimestamp.Time,
 	}
 	for _, cond := range j.Status.Conditions {
 		if cond.Status != "True" {

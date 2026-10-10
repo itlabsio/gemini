@@ -78,6 +78,7 @@ func NewRouter(d Deps) http.Handler {
 	apiR.HandleFunc("/runs", auth.RequireRole(auth.RoleViewer, s.listRuns)).Methods(http.MethodGet)
 	apiR.HandleFunc("/runs/active", auth.RequireRole(auth.RoleViewer, s.listActiveRuns)).Methods(http.MethodGet)
 	apiR.HandleFunc("/runs/{id}", auth.RequireRole(auth.RoleViewer, s.getRun)).Methods(http.MethodGet)
+	apiR.HandleFunc("/runs/{id}/cancel", auth.RequireRole(auth.RoleOperator, s.cancelRun)).Methods(http.MethodPost)
 
 	apiR.HandleFunc("/pairings", auth.RequireRole(auth.RoleViewer, s.listPairings)).Methods(http.MethodGet)
 	apiR.HandleFunc("/pairings/{id}", auth.RequireRole(auth.RoleAdmin, s.deletePairing)).Methods(http.MethodDelete)

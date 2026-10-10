@@ -70,6 +70,8 @@ export const listDatabases = (instanceId: string) =>
   apiFetch<Database[]>(`/api/instances/${instanceId}/databases`);
 export const listRuns = (qs = "") => apiFetch<BackupRun[]>(`/api/runs${qs}`);
 export const listActiveRuns = () => apiFetch<BackupRun[]>("/api/runs/active");
+export const cancelRun = (id: string) =>
+  apiFetch<BackupRun>(`/api/runs/${id}/cancel`, { method: "POST" });
 export const listPairings = () => apiFetch<HeadPairing[]>("/api/pairings");
 export const deletePairing = (id: string) =>
   apiFetch<void>(`/api/pairings/${id}`, { method: "DELETE" });
@@ -138,6 +140,7 @@ export const updateSettings = (p: {
   default_resources: ResourceSpec;
   default_pod_scheduling?: Record<string, unknown> | null;
   job_ttl_minutes: number;
+  job_pod_start_timeout_minutes: number;
 }) => apiFetch<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(p) });
 
 export const listS3Buckets = () => apiFetch<S3Bucket[]>("/api/s3-buckets");

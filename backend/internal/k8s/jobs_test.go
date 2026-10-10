@@ -1,6 +1,15 @@
 package k8s
 
-import "testing"
+import (
+	"context"
+	"strings"
+	"testing"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
+)
 
 func TestPickErrorLines(t *testing.T) {
 	cases := []struct {
@@ -85,5 +94,46 @@ func TestLooksLikeError(t *testing.T) {
 		if looksLikeError(s) {
 			t.Errorf("looksLikeError(%q) = true, want false", s)
 		}
+	}
+}
+
+func TestPodNotStarted(t *testing.T) {
+	const ns, job = "gemini", "gemini-dump-r1"
+	pod := func(phase corev1.PodPhase, waiting string) *corev1.Pod {
+		p := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: job + "-x", Namespace: ns, Labels: map[string]string{"job-name": job}},
+			Status:     corev1.PodStatus{Phase: phase},
+		}
+		if waiting != "" {
+			p.Status.ContainerStatuses = []corev1.ContainerStatus{{
+				Name: "runner", State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: waiting}},
+			}}
+		}
+		return p
+	}
+	failedCreate := &corev1.Event{
+		ObjectMeta:     metav1.ObjectMeta{Name: "ev1", Namespace: ns},
+		InvolvedObject: corev1.ObjectReference{Kind: "Job", Name: job},
+		Type:           corev1.EventTypeWarning,
+		Reason:         "FailedCreate",
+		Message:        "spec.volumes[0].ephemeral: storage must be at least 1Gi",
+	}
+	for _, tc := range []struct {
+		name       string
+		objs       []runtime.Object
+		wantStuck  bool
+		wantReason string
+	}{
+		{"no pods, FailedCreate event", []runtime.Object{failedCreate}, true, "FailedCreate"},
+		{"pending pod, image pull", []runtime.Object{pod(corev1.PodPending, "ImagePullBackOff")}, true, "ImagePullBackOff"},
+		{"running pod", []runtime.Object{pod(corev1.PodRunning, "")}, false, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Client{cs: fake.NewSimpleClientset(tc.objs...), namespace: ns}
+			stuck, reason := c.PodNotStarted(context.Background(), job)
+			if stuck != tc.wantStuck || !strings.Contains(reason, tc.wantReason) {
+				t.Errorf("PodNotStarted = (%v, %q), want (%v, ~%q)", stuck, reason, tc.wantStuck, tc.wantReason)
+			}
+		})
 	}
 }

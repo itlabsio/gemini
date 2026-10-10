@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { Settings } from "@/lib/types";
 import { updateSettingsAction } from "@/app/settings/actions";
+import { bytesQuantityError, MIN_STORAGE_SIZE } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,6 +27,18 @@ import {
 // Границы TTL завершённых Job'ов в минутах — как на бэкенде (5 минут … 7 суток)
 const JOB_TTL_MIN = 5;
 const JOB_TTL_MAX = 7 * 24 * 60;
+// Таймаут старта пода в минутах — как на бэкенде (1 минута … сутки)
+const POD_START_MIN = 1;
+const POD_START_MAX = 24 * 60;
+
+/** Целое число минут в [min, max] или текст ошибки. */
+function minutesError(v: string, min: number, max: number): string | null {
+  const n = Number(v.trim());
+  if (!v.trim() || !Number.isInteger(n) || n < min || n > max) {
+    return `Целое число минут от ${min} до ${max}`;
+  }
+  return null;
+}
 
 export function SettingsForm({ initial }: { initial: Settings }) {
   const [pending, start] = useTransition();
@@ -49,6 +62,18 @@ export function SettingsForm({ initial }: { initial: Settings }) {
     : "";
   const [sched, setSched] = useState(initialSched);
   const [ttl, setTtl] = useState(String(initial.job_ttl_minutes));
+  const [podStart, setPodStart] = useState(
+    String(initial.job_pod_start_timeout_minutes),
+  );
+
+  const sizeErr = size.trim()
+    ? bytesQuantityError(size, { min: MIN_STORAGE_SIZE })
+    : "Обязательное поле";
+  const reqMemErr = bytesQuantityError(reqMem);
+  const limMemErr = bytesQuantityError(limMem);
+  const ttlErr = minutesError(ttl, JOB_TTL_MIN, JOB_TTL_MAX);
+  const podStartErr = minutesError(podStart, POD_START_MIN, POD_START_MAX);
+  const invalid = Boolean(sizeErr || reqMemErr || limMemErr || ttlErr || podStartErr);
 
   const dirty =
     type !== initial.default_storage_type ||
@@ -58,7 +83,8 @@ export function SettingsForm({ initial }: { initial: Settings }) {
     limCpu !== (initial.default_resources?.limits?.cpu ?? "") ||
     limMem !== (initial.default_resources?.limits?.memory ?? "") ||
     sched.trim() !== initialSched.trim() ||
-    ttl.trim() !== String(initial.job_ttl_minutes);
+    ttl.trim() !== String(initial.job_ttl_minutes) ||
+    podStart.trim() !== String(initial.job_pod_start_timeout_minutes);
 
   function save() {
     let scheduling: Record<string, unknown> | null = null;
@@ -71,17 +97,7 @@ export function SettingsForm({ initial }: { initial: Settings }) {
       }
     }
 
-    const ttlMinutes = Number(ttl.trim());
-    if (
-      !Number.isInteger(ttlMinutes) ||
-      ttlMinutes < JOB_TTL_MIN ||
-      ttlMinutes > JOB_TTL_MAX
-    ) {
-      toast.error(
-        `TTL Job'ов: целое число минут от ${JOB_TTL_MIN} до ${JOB_TTL_MAX}`,
-      );
-      return;
-    }
+    if (invalid) return;
 
     start(async () => {
       const res = await updateSettingsAction({
@@ -92,7 +108,8 @@ export function SettingsForm({ initial }: { initial: Settings }) {
           limits: { cpu: limCpu || undefined, memory: limMem || undefined },
         },
         default_pod_scheduling: scheduling,
-        job_ttl_minutes: ttlMinutes,
+        job_ttl_minutes: Number(ttl.trim()),
+        job_pod_start_timeout_minutes: Number(podStart.trim()),
       });
       if (res.ok) toast.success("Сохранено");
       else toast.error(res.error);
@@ -125,9 +142,15 @@ export function SettingsForm({ initial }: { initial: Settings }) {
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Размер" htmlFor="storage_size" className="flex-1">
+          <Field
+            label="Размер"
+            htmlFor="storage_size"
+            error={sizeErr}
+            className="flex-1"
+          >
             <Input
               id="storage_size"
+              aria-invalid={Boolean(sizeErr)}
               value={size}
               onChange={(e) => setSize(e.target.value)}
               placeholder="20Gi"
@@ -157,6 +180,7 @@ export function SettingsForm({ initial }: { initial: Settings }) {
               placeholder="500m"
             />
             <Input
+              aria-invalid={Boolean(reqMemErr)}
               value={reqMem}
               onChange={(e) => setReqMem(e.target.value)}
               placeholder="512Mi"
@@ -169,11 +193,17 @@ export function SettingsForm({ initial }: { initial: Settings }) {
               placeholder="2"
             />
             <Input
+              aria-invalid={Boolean(limMemErr)}
               value={limMem}
               onChange={(e) => setLimMem(e.target.value)}
               placeholder="2Gi"
             />
           </div>
+          {(reqMemErr || limMemErr) && (
+            <p className="mt-2 text-xs text-destructive">
+              Memory: {reqMemErr ?? limMemErr}
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -199,18 +229,44 @@ export function SettingsForm({ initial }: { initial: Settings }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Хранение завершённых Job’ов</CardTitle>
+          <CardTitle>Таймауты dump/restore-Job’ов</CardTitle>
           <CardDescription>
-            Через сколько минут после завершения k8s удаляет dump/restore-Job
-            вместе с подами и их логами (ttlSecondsAfterFinished). Применяется
-            к CronJob’ам при следующей сверке шаблонов (до ~6 минут); уже
-            созданные Job’ы сохраняют прежний TTL
+            Ожидание старта: если за это время под Job’а так и не запустился
+            (не создаётся, висит в Pending), Job удаляется, а прогон
+            закрывается с ошибкой. TTL: через сколько минут после завершения
+            k8s удаляет Job вместе с подами и их логами — применяется к
+            CronJob’ам при следующей сверке шаблонов (до ~6 минут)
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Field label="TTL, минуты" htmlFor="job_ttl_minutes" className="w-40">
+        <CardContent className="flex gap-4">
+          <Field
+            label="Ожидание старта пода, мин"
+            htmlFor="job_pod_start_timeout_minutes"
+            error={podStartErr}
+            className="flex-1"
+          >
+            <Input
+              id="job_pod_start_timeout_minutes"
+              aria-invalid={Boolean(podStartErr)}
+              type="number"
+              inputMode="numeric"
+              min={POD_START_MIN}
+              max={POD_START_MAX}
+              step={1}
+              value={podStart}
+              onChange={(e) => setPodStart(e.target.value)}
+              placeholder="10"
+            />
+          </Field>
+          <Field
+            label="TTL завершённых, мин"
+            htmlFor="job_ttl_minutes"
+            error={ttlErr}
+            className="flex-1"
+          >
             <Input
               id="job_ttl_minutes"
+              aria-invalid={Boolean(ttlErr)}
               type="number"
               inputMode="numeric"
               min={JOB_TTL_MIN}
@@ -225,7 +281,7 @@ export function SettingsForm({ initial }: { initial: Settings }) {
       </Card>
 
       <div className="flex items-center gap-3">
-        <Button onClick={save} disabled={pending || !dirty}>
+        <Button onClick={save} disabled={pending || !dirty || invalid}>
           {pending ? "Сохранение…" : "Сохранить"}
         </Button>
         {!dirty && (

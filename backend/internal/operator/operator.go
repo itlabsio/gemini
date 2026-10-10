@@ -379,6 +379,80 @@ func (o *Operator) Watch(ctx context.Context) {
 	}
 }
 
+// defaultPodStartTimeout — таймаут старта пода, если настройки не прочитались.
+const defaultPodStartTimeout = 10 * time.Minute
+
+// podStartTimeout — сколько Job может ждать старта пода (app_settings).
+func (o *Operator) podStartTimeout(ctx context.Context) time.Duration {
+	st, err := o.store.GetSettings(ctx)
+	if err != nil || st == nil || st.JobPodStartTimeoutMinutes <= 0 {
+		return defaultPodStartTimeout
+	}
+	return time.Duration(st.JobPodStartTimeoutMinutes) * time.Minute
+}
+
+// failIfPodNotStarted закрывает прогон, у Job'а которого за timeout так и не
+// запустился под (FailedCreate из-за кривого PVC, Pending без нод, ErrImagePull):
+// иначе прогон висел бы running до activeDeadlineSeconds. Job удаляется, чтобы
+// контроллер перестал пытаться создать под.
+func (o *Operator) failIfPodNotStarted(ctx context.Context, js k8s.JobStatus, timeout time.Duration) {
+	stuck, reason := o.k8s.PodNotStarted(ctx, js.Name)
+	if !stuck {
+		return
+	}
+	run := o.runForJob(ctx, js)
+	if run == nil || !run.Active() {
+		return
+	}
+	if err := o.k8s.DeleteJob(ctx, js.Name); err != nil {
+		log.Printf("operator: delete stuck job %s: %v", js.Name, err)
+		return
+	}
+	o.onRunFailed(ctx, *run, fmt.Sprintf("под не запустился за %s — %s", timeout, reason))
+}
+
+// ErrRunNotActive — прогон уже завершён, останавливать нечего.
+var ErrRunNotActive = errors.New("operator: run is not active")
+
+// CancelRun останавливает активный прогон: удаляет его Job (вместе с подами) и
+// закрывает прогон как failed. Job ищется по имени из прогона, а для ручных
+// запусков — ещё и по лейблу run-id (имя могло не успеть записаться).
+func (o *Operator) CancelRun(ctx context.Context, runID, by string) (*model.BackupRun, error) {
+	run, err := o.store.GetRun(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	if !run.Active() {
+		return nil, ErrRunNotActive
+	}
+	if o.k8s != nil {
+		names := map[string]bool{}
+		if run.K8sJobName != "" {
+			names[run.K8sJobName] = true
+		}
+		statuses, err := o.k8s.ListManagedJobs(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, js := range statuses {
+			if js.RunID == run.ID {
+				names[js.Name] = true
+			}
+		}
+		for name := range names {
+			if err := o.k8s.DeleteJob(ctx, name); err != nil {
+				return nil, fmt.Errorf("delete job %s: %w", name, err)
+			}
+		}
+	}
+	msg := "остановлен вручную"
+	if by != "" {
+		msg += ": " + by
+	}
+	o.onRunFailed(ctx, *run, msg)
+	return o.store.GetRun(ctx, runID)
+}
+
 // stuckRunGrace — сколько прогон может «висеть» активным без Job'а в кластере,
 // прежде чем reaper принудительно закроет его как failed.
 const stuckRunGrace = 15 * time.Minute
@@ -388,8 +462,15 @@ func (o *Operator) reconcileOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	podStartTimeout := time.Duration(-1) // читаем настройку лениво, раз за тик
 	for _, js := range statuses {
 		if js.Phase == k8s.PhaseRunning {
+			if podStartTimeout < 0 {
+				podStartTimeout = o.podStartTimeout(ctx)
+			}
+			if time.Since(js.Created) > podStartTimeout {
+				o.failIfPodNotStarted(ctx, js, podStartTimeout)
+			}
 			continue // ждём терминального состояния
 		}
 		run := o.runForJob(ctx, js)

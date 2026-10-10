@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import {
   ApiError,
+  cancelRun,
   createInstance,
   deleteInstance,
   discoverInstance,
@@ -114,6 +115,17 @@ export async function activeRunsAction(): Promise<
   } catch (e) {
     const r = toResult(e);
     return { ok: false, error: r.ok ? "неизвестная ошибка" : r.error };
+  }
+}
+
+/** Остановка активного прогона: бэкенд удаляет Job и закрывает прогон. */
+export async function cancelRunAction(instanceId: string, runId: string): Promise<Result> {
+  try {
+    await cancelRun(runId);
+    revalidatePath(`/instances/${instanceId}`);
+    return { ok: true };
+  } catch (e) {
+    return toResult(e);
   }
 }
 

@@ -8,6 +8,7 @@ import { Pause, Play, RefreshCw, ScrollText } from "lucide-react";
 import type { BackupRun, Database } from "@/lib/types";
 import {
   activeRunsAction,
+  cancelRunAction,
   discoverAction,
   patchDatabaseAction,
   runDatabaseAction,
@@ -17,7 +18,13 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/status-badge";
-import { cn, fmtPgVersion } from "@/lib/utils";
+import { RunningStopButton } from "@/components/running-stop-button";
+import {
+  bytesQuantityError,
+  cn,
+  fmtPgVersion,
+  MIN_STORAGE_SIZE,
+} from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -142,6 +149,23 @@ export function DatabasesManager({
     });
   };
 
+  // Остановка прогона: базу сразу убираем из «активных», чтобы опрос не принял
+  // остановку за завершение и не показал тост «Бэкап завершён».
+  const stopRun = (r: BackupRun) =>
+    start(async () => {
+      const res = await cancelRunAction(instanceId, r.id);
+      if (!res.ok) {
+        toast.error(res.error ?? "Ошибка");
+        return;
+      }
+      toast.success("Прогон остановлен");
+      const next = new Map(activeRef.current);
+      next.delete(r.database_id);
+      activeRef.current = next;
+      setPolled(next);
+      void refreshActive();
+    });
+
   const onDiscover = () =>
     start(async () => {
       const res = await discoverAction(instanceId);
@@ -206,6 +230,7 @@ export function DatabasesManager({
                   activeRun={activeByDb.get(db.id)}
                   defaultStorageSize={defaultStorageSize}
                   run={run}
+                  onStop={stopRun}
                 />
               ))}
             </TableBody>
@@ -226,6 +251,7 @@ function Row({
   activeRun,
   defaultStorageSize,
   run,
+  onStop,
 }: {
   db: Database;
   instanceId: string;
@@ -236,6 +262,7 @@ function Row({
   activeRun?: BackupRun;
   defaultStorageSize: string;
   run: (fn: () => Promise<ActionResult>, okMsg?: string) => void;
+  onStop: (r: BackupRun) => void;
 }) {
   const [cron, setCron] = useState(db.schedule_cron ?? "");
   const [stType, setStType] = useState(db.storage_type ?? "");
@@ -246,6 +273,7 @@ function Row({
     stType !== (db.storage_type ?? "") || stSize !== (db.storage_size ?? "");
 
   const running = Boolean(activeRun);
+  const sizeErr = bytesQuantityError(stSize, { min: MIN_STORAGE_SIZE });
 
   // На Source у каждой базы есть CronJob; он suspended, если база выключена
   // или не задан schedule_cron — авто-бэкапа нет.
@@ -332,13 +360,22 @@ function Row({
               <SelectItem value="emptydir">emptyDir</SelectItem>
             </SelectContent>
           </Select>
-          <Input
-            value={stSize}
-            onChange={(e) => setStSize(e.target.value)}
-            disabled={!canEdit || disabled}
-            placeholder={defaultStorageSize || "20Gi"}
-            className="h-8 w-20 text-xs"
-          />
+          <div className="relative">
+            <Input
+              value={stSize}
+              onChange={(e) => setStSize(e.target.value)}
+              disabled={!canEdit || disabled}
+              placeholder={defaultStorageSize || "20Gi"}
+              aria-invalid={Boolean(sizeErr)}
+              title={sizeErr ?? undefined}
+              className="h-8 w-20 text-xs"
+            />
+            {sizeErr && (
+              <p className="absolute top-full left-0 mt-0.5 text-[11px] whitespace-nowrap text-destructive">
+                {sizeErr}
+              </p>
+            )}
+          </div>
           {canEdit && storageDirty && (
             <Button
               size="sm"
@@ -352,7 +389,7 @@ function Row({
                   "Хранилище сохранено",
                 )
               }
-              disabled={disabled}
+              disabled={disabled || Boolean(sizeErr)}
             >
               Применить
             </Button>
@@ -377,7 +414,15 @@ function Row({
 
       <TableCell className="text-right">
         <div className="flex justify-end">
-          {running ? (
+          {activeRun && canRun ? (
+            <RunningStopButton
+              status={activeRun.status}
+              kind={activeRun.kind}
+              dbName={db.db_name}
+              disabled={disabled}
+              onStop={() => onStop(activeRun)}
+            />
+          ) : running ? (
             <StatusBadge status={activeRun?.status} />
           ) : canRun && db.enabled ? (
             <Button

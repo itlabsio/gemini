@@ -278,9 +278,12 @@ type Settings struct {
 	DefaultPodScheduling json.RawMessage `json:"default_pod_scheduling,omitempty"`
 	// JobTTLMinutes — через сколько минут после завершения k8s удаляет
 	// dump/restore-Job вместе с подами (spec.ttlSecondsAfterFinished).
-	JobTTLMinutes int32     `json:"job_ttl_minutes"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	UpdatedBy     string    `json:"updated_by"`
+	JobTTLMinutes int32 `json:"job_ttl_minutes"`
+	// JobPodStartTimeoutMinutes — сколько ждать старта пода Job'а; дальше прогон
+	// закрывается как failed, Job удаляется.
+	JobPodStartTimeoutMinutes int32     `json:"job_pod_start_timeout_minutes"`
+	UpdatedAt                 time.Time `json:"updated_at"`
+	UpdatedBy                 string    `json:"updated_by"`
 }
 
 // User — кэш последних логинов для аудита UI.

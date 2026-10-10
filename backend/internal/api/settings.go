@@ -17,6 +17,12 @@ const (
 	maxJobTTLMinutes = 7 * 24 * 60
 )
 
+// Границы таймаута старта пода (минуты) — как CHECK в миграции 016.
+const (
+	minPodStartTimeoutMinutes = 1
+	maxPodStartTimeoutMinutes = 24 * 60
+)
+
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	st, err := s.d.Store.GetSettings(r.Context())
 	if err != nil {
@@ -32,7 +38,8 @@ type settingsRequest struct {
 	DefaultResources     model.ResourceSpec `json:"default_resources"`
 	DefaultPodScheduling json.RawMessage    `json:"default_pod_scheduling"`
 	// 0 / не передан → текущее значение не меняется (старые клиенты).
-	JobTTLMinutes int32 `json:"job_ttl_minutes"`
+	JobTTLMinutes             int32 `json:"job_ttl_minutes"`
+	JobPodStartTimeoutMinutes int32 `json:"job_pod_start_timeout_minutes"`
 }
 
 // putSettings — админка: дефолты типа/размера временного хранилища, ресурсов и TTL Job'ов.
@@ -51,8 +58,8 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "default_storage_size is required (e.g. 20Gi)")
 		return
 	}
-	if err := k8s.ValidQuantity(req.DefaultStorageSize); err != nil {
-		writeError(w, http.StatusBadRequest, "default_storage_size must be a k8s quantity (e.g. 20Gi): "+err.Error())
+	if err := k8s.ValidStorageSize(req.DefaultStorageSize); err != nil {
+		writeError(w, http.StatusBadRequest, "default_storage_size: "+err.Error())
 		return
 	}
 	for label, v := range map[string]string{
@@ -78,27 +85,38 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	} else {
 		sched = nil
 	}
-	ttl := req.JobTTLMinutes
-	if ttl == 0 {
+	ttl, podStart := req.JobTTLMinutes, req.JobPodStartTimeoutMinutes
+	if ttl == 0 || podStart == 0 {
 		cur, err := s.d.Store.GetSettings(r.Context())
 		if err != nil {
 			writeStoreError(w, err)
 			return
 		}
-		ttl = cur.JobTTLMinutes
+		if ttl == 0 {
+			ttl = cur.JobTTLMinutes
+		}
+		if podStart == 0 {
+			podStart = cur.JobPodStartTimeoutMinutes
+		}
 	}
 	if ttl < minJobTTLMinutes || ttl > maxJobTTLMinutes {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf(
 			"job_ttl_minutes must be between %d and %d", minJobTTLMinutes, maxJobTTLMinutes))
 		return
 	}
+	if podStart < minPodStartTimeoutMinutes || podStart > maxPodStartTimeoutMinutes {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf(
+			"job_pod_start_timeout_minutes must be between %d and %d", minPodStartTimeoutMinutes, maxPodStartTimeoutMinutes))
+		return
+	}
 	id, _ := ctxIdentity(r)
 	st, err := s.d.Store.UpdateSettings(r.Context(), store.SettingsInput{
-		DefaultStorageType:   req.DefaultStorageType,
-		DefaultStorageSize:   req.DefaultStorageSize,
-		DefaultResources:     req.DefaultResources,
-		DefaultPodScheduling: sched,
-		JobTTLMinutes:        ttl,
+		DefaultStorageType:        req.DefaultStorageType,
+		DefaultStorageSize:        req.DefaultStorageSize,
+		DefaultResources:          req.DefaultResources,
+		DefaultPodScheduling:      sched,
+		JobTTLMinutes:             ttl,
+		JobPodStartTimeoutMinutes: podStart,
 	}, id)
 	if err != nil {
 		writeStoreError(w, err)

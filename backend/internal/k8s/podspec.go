@@ -1,7 +1,10 @@
 package k8s
 
 import (
+	"errors"
+	"fmt"
 	"log"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -31,6 +34,26 @@ func ValidQuantity(s string) error {
 	return err
 }
 
+// MinWorkDirSize — минимальный размер тома дампа. Меньшее значение почти
+// наверняка опечатка ("20" без Gi = 20 байт): под с таким PVC не стартует.
+const MinWorkDirSize = "1Gi"
+
+// ValidStorageSize проверяет размер тома дампа: k8s-величина с единицей
+// измерения (Gi, Mi, …) и не меньше MinWorkDirSize.
+func ValidStorageSize(s string) error {
+	q, err := resource.ParseQuantity(s)
+	if err != nil {
+		return err
+	}
+	if strings.TrimLeft(s, "0123456789.") == "" {
+		return errors.New("unit is required (e.g. 20Gi)")
+	}
+	if q.Cmp(resource.MustParse(MinWorkDirSize)) < 0 {
+		return fmt.Errorf("must be at least %s", MinWorkDirSize)
+	}
+	return nil
+}
+
 // safeQuantity парсит величину, подставляя fallback вместо паники. resource.MustParse
 // в этом файле раньше ронял процесс из фоновой горутины реконсилера, если в БД
 // лежал невалидный storage_size (например "20GB" — опечатка в UI).
@@ -47,6 +70,11 @@ func safeQuantity(s, fallback string) resource.Quantity {
 // workVolume строит том /work: emptyDir или generic ephemeral PVC.
 func workVolume(storageType, storageClass, size string) corev1.Volume {
 	if size == "" {
+		size = DefaultWorkDirSize
+	}
+	// Старые значения в БД могли пройти валидацию до ValidStorageSize.
+	if err := ValidStorageSize(size); err != nil {
+		log.Printf("k8s: invalid work dir size %q (%v), falling back to %s", size, err, DefaultWorkDirSize)
 		size = DefaultWorkDirSize
 	}
 	q := safeQuantity(size, DefaultWorkDirSize)

@@ -54,8 +54,8 @@ func (s *Server) patchDatabase(w http.ResponseWriter, r *http.Request) {
 	}
 	// Кривой размер доезжал до PodSpec и ронял реконсилер паникой — валидируем на входе.
 	if req.StorageSize != nil && *req.StorageSize != "" {
-		if err := k8s.ValidQuantity(*req.StorageSize); err != nil {
-			writeError(w, http.StatusBadRequest, "storage_size must be a k8s quantity (e.g. 20Gi): "+err.Error())
+		if err := k8s.ValidStorageSize(*req.StorageSize); err != nil {
+			writeError(w, http.StatusBadRequest, "storage_size: "+err.Error())
 			return
 		}
 	}

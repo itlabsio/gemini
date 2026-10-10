@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
+	"gl.sdvor.com/devops/docker/gemini/backend/internal/operator"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/store"
 )
 
@@ -45,6 +47,23 @@ func (s *Server) getRun(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	writeJSON(w, http.StatusOK, run)
+}
+
+// cancelRun — остановка активного прогона: Job удаляется, прогон → failed.
+func (s *Server) cancelRun(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	idn, _ := ctxIdentity(r)
+	run, err := s.d.Operator.CancelRun(r.Context(), id, idn)
+	if errors.Is(err, operator.ErrRunNotActive) {
+		writeError(w, http.StatusConflict, "run is already finished")
+		return
+	}
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.audit(r, "run.cancel", id, nil)
 	writeJSON(w, http.StatusOK, run)
 }
 
