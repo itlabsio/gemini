@@ -61,15 +61,22 @@ type Verifier struct {
 // NewVerifier регистрирует JWKS-эндпоинт Keycloak и делает первичную загрузку ключей.
 func NewVerifier(ctx context.Context, cfg config.OIDCConfig) (*Verifier, error) {
 	jwksURI := cfg.IssuerURL + "/protocol/openid-connect/certs"
-	cache, err := jwk.NewCache(ctx, httprc.NewClient())
+	// Без таймаута недоступный Keycloak вешал старт до HTTP-сервера: livez не
+	// отвечал, и kubelet молча перезапускал под без единой строки об ошибке.
+	cache, err := jwk.NewCache(ctx, httprc.NewClient(
+		httprc.WithHTTPClient(&http.Client{Timeout: 10 * time.Second}),
+	))
 	if err != nil {
 		return nil, fmt.Errorf("jwk cache: %w", err)
 	}
-	if err := cache.Register(ctx, jwksURI, jwk.WithMinInterval(15*time.Minute)); err != nil {
-		return nil, fmt.Errorf("register jwks: %w", err)
+	initCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	// Register по умолчанию сам ждёт первую загрузку — тоже под таймаутом.
+	if err := cache.Register(initCtx, jwksURI, jwk.WithMinInterval(15*time.Minute)); err != nil {
+		return nil, fmt.Errorf("register jwks %s: %w", jwksURI, err)
 	}
-	if _, err := cache.Refresh(ctx, jwksURI); err != nil {
-		return nil, fmt.Errorf("initial jwks fetch: %w", err)
+	if _, err := cache.Refresh(initCtx, jwksURI); err != nil {
+		return nil, fmt.Errorf("initial jwks fetch %s: %w", jwksURI, err)
 	}
 	keyset, err := cache.CachedSet(jwksURI)
 	if err != nil {
