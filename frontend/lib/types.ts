@@ -138,6 +138,8 @@ export interface Candidate {
   db_name: string;
   /** Префикс дампов этой базы в S3, как его формирует Source (<инстанс>/<база>). */
   s3_prefix: string;
+  /** Включён ли бэкап базы на Source (информативно: restore решает галка на Target). */
+  enabled: boolean;
 }
 
 export interface Me {

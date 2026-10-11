@@ -143,6 +143,8 @@ func writeRunStartError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "a job for this database is already active")
 	case errors.Is(err, operator.ErrNoK8s):
 		writeError(w, http.StatusServiceUnavailable, "kubernetes client is not configured")
+	case errors.Is(err, operator.ErrDatabaseDisabled):
+		writeError(w, http.StatusConflict, "restore is disabled for this target database")
 	case errors.Is(err, storage.ErrNoBuckets):
 		writeError(w, http.StatusServiceUnavailable, "no S3 buckets configured")
 	default:

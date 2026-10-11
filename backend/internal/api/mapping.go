@@ -16,13 +16,16 @@ type candidate struct {
 	// (<имя инстанса>/<имя базы>). Target подставляет его в сопоставление,
 	// чтобы администратору не приходилось угадывать раскладку бакета.
 	S3Prefix string `json:"s3_prefix"`
+	// Enabled — включён ли бэкап базы на Source. Только для информации в UI:
+	// восстанавливать или нет, решает галка целевой базы на Target.
+	Enabled bool `json:"enabled"`
 }
 
-// peerListEnabledDatabases (Source, HMAC): отдаёт DR список enabled-баз.
-// Наружу уходят external_id, имя базы и префикс дампа в S3 — никаких кред,
+// peerListDatabases (Source, HMAC): отдаёт DR список всех присутствующих баз
+// (включая выключенные — сопоставить их можно заранее). Наружу уходят external_id, имя базы и префикс дампа в S3 — никаких кред,
 // host'ов, паролей.
-func (s *Server) peerListEnabledDatabases(w http.ResponseWriter, r *http.Request) {
-	dbs, err := s.d.Store.ListEnabledDatabases(r.Context())
+func (s *Server) peerListDatabases(w http.ResponseWriter, r *http.Request) {
+	dbs, err := s.d.Store.ListPresentDatabases(r.Context())
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -45,12 +48,13 @@ func (s *Server) peerListEnabledDatabases(w http.ResponseWriter, r *http.Request
 			DBName:     d.DBName,
 			// см. operator.ensureCronJob: dump-Job получает S3_PREFIX = inst.Name/db.DBName
 			S3Prefix: name + "/" + d.DBName,
+			Enabled:  d.Enabled,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
 }
 
-// mappingCandidates (DR): запрашивает у Source список enabled-баз через peer-клиент.
+// mappingCandidates (DR): запрашивает у Source список баз через peer-клиент.
 func (s *Server) mappingCandidates(w http.ResponseWriter, r *http.Request) {
 	p, err := s.d.Store.ActivePairing(r.Context(), "source")
 	if err != nil {

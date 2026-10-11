@@ -113,7 +113,7 @@ func NewRouter(d Deps) http.Handler {
 	peerR := r.PathPrefix("/peer").Subrouter()
 	peerR.Use(d.PeerVerifier.Middleware)
 	if d.Cfg.IsSource() {
-		peerR.HandleFunc("/databases", s.peerListEnabledDatabases).Methods(http.MethodGet)
+		peerR.HandleFunc("/databases", s.peerListDatabases).Methods(http.MethodGet)
 	}
 
 	whR := r.NewRoute().Subrouter()

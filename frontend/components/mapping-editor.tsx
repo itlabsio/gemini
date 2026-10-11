@@ -9,6 +9,7 @@ import {
   loadRolesAction,
   saveMappingAction,
 } from "@/app/mapping/actions";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -152,7 +153,20 @@ function MappingRow({
 
   return (
     <TableRow>
-      <TableCell className="font-medium">{candidate.db_name}</TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <span className="font-medium">{candidate.db_name}</span>
+          {candidate.enabled === false && (
+            <Badge
+              variant="outline"
+              className="text-muted-foreground"
+              title="На Source бэкап этой базы выключен — новых дампов не будет, пока его не включат"
+            >
+              бэкап выключен
+            </Badge>
+          )}
+        </div>
+      </TableCell>
       <TableCell>
         <Select value={target} onValueChange={setTarget}>
           <SelectTrigger size="sm" className="w-56">

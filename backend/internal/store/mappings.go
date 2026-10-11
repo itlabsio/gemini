@@ -82,10 +82,14 @@ func (s *Store) MappingByTargetDatabaseID(ctx context.Context, targetDatabaseID 
 		 WHERE target_database_id = $1 ORDER BY created_at DESC LIMIT 1`, targetDatabaseID))
 }
 
-// EnabledMappings — активные сопоставления (для fallback-поллинга S3 на DR).
+// EnabledMappings — активные сопоставления, у которых целевая база включена и
+// присутствует (для fallback-поллинга S3 и restore-шаблонов на DR).
 func (s *Store) EnabledMappings(ctx context.Context) ([]model.DatabaseMapping, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT `+mappingCols+` FROM database_mappings WHERE enabled ORDER BY created_at DESC`)
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+mappingCols+` FROM database_mappings
+		WHERE enabled
+		  AND target_database_id IN (SELECT id FROM databases WHERE enabled AND present)
+		ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
 	}

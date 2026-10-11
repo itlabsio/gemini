@@ -41,10 +41,30 @@ func (s *Store) ListDatabases(ctx context.Context, instanceID string) ([]model.D
 	return collectDatabases(rows)
 }
 
-// ListEnabledDatabases возвращает включённые базы (для scheduler и для sync с DR).
+// ListEnabledDatabases возвращает включённые базы (для scheduler).
 func (s *Store) ListEnabledDatabases(ctx context.Context) ([]model.Database, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT `+databaseCols+` FROM databases WHERE enabled AND present ORDER BY db_name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return collectDatabases(rows)
+}
+
+// ListPresentDatabases возвращает присутствующие базы всех инстансов, кроме
+// исключённых из discovery (postgres и instances.excluded_databases), —
+// независимо от enabled. Это список кандидатов для сопоставления на DR: решать,
+// восстанавливать ли базу, должна галка на Target, а не на Source.
+func (s *Store) ListPresentDatabases(ctx context.Context) ([]model.Database, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+databaseCols+`
+		FROM databases d
+		WHERE d.present
+		  AND d.db_name <> 'postgres'
+		  AND d.db_name <> ALL (
+		      SELECT unnest(excluded_databases) FROM instances i WHERE i.id = d.instance_id)
+		ORDER BY d.db_name`)
 	if err != nil {
 		return nil, err
 	}

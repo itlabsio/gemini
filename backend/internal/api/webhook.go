@@ -72,6 +72,10 @@ func (s *Server) webhookBackupReady(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusAccepted, map[string]any{"status": "restore-started", "run_id": run.ID})
 	case errors.Is(err, store.ErrConflict):
 		writeJSON(w, http.StatusOK, map[string]string{"status": "already-running"})
+	case errors.Is(err, operator.ErrDatabaseDisabled):
+		// Не ошибка доставки: Source ретраить не должен. После включения базы
+		// свежий дамп подхватит fallback-поллинг.
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ignored", "reason": "restore is disabled for the target database"})
 	case errors.Is(err, operator.ErrNoK8s):
 		writeError(w, http.StatusServiceUnavailable, "kubernetes client not configured")
 	default:

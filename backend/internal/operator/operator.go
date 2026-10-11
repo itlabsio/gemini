@@ -86,6 +86,9 @@ func (o *Operator) jobParams(ctx context.Context, db *model.Database) (storageTy
 // ErrNoK8s — операция требует доступа к кластеру, которого нет.
 var ErrNoK8s = errors.New("operator: kubernetes client not configured")
 
+// ErrDatabaseDisabled — восстановление в целевую базу выключено на Target.
+var ErrDatabaseDisabled = errors.New("operator: target database is disabled")
+
 // safely выполняет один тик фонового цикла, превращая панику в лог.
 // Фоновые горутины не должны ронять весь процесс из-за одной плохой записи в
 // БД: до появления этой обёртки невалидный storage_size в databases/app_settings
@@ -293,6 +296,11 @@ func (o *Operator) StartRestore(ctx context.Context, m *model.DatabaseMapping, s
 	target, err := o.store.GetDatabase(ctx, m.TargetDatabaseID)
 	if err != nil {
 		return nil, err
+	}
+	// Восстанавливать или нет, решает галка целевой базы на Target — флаг
+	// бэкапа на Source сюда не доезжает и значения не имеет.
+	if !target.Enabled {
+		return nil, ErrDatabaseDisabled
 	}
 	inst, err := o.store.GetInstance(ctx, target.InstanceID)
 	if err != nil {
