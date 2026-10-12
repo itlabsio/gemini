@@ -9,6 +9,7 @@ import {
 } from "@/lib/api";
 import type { DatabaseMapping } from "@/lib/types";
 import { MappingEditor } from "@/components/mapping-editor";
+import { MappingActiveBadge } from "@/components/mapping-active-badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -128,9 +129,14 @@ export default async function MappingPage() {
                     {m.s3_prefix}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={m.enabled ? "success" : "secondary"}>
-                      {m.enabled ? "да" : "нет"}
-                    </Badge>
+                    <MappingActiveBadge
+                      mapping={m}
+                      sourceLabel={m.source_db_name || m.source_database_external_id}
+                      targetLabel={
+                        targetLabel.get(m.target_database_id) ?? m.target_database_id
+                      }
+                      canUnlink={me.role === "admin"}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

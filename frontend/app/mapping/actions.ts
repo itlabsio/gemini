@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import {
   ApiError,
+  deleteMapping,
   listInstanceRoles,
   mappingCandidates,
   saveMapping,
@@ -39,6 +40,18 @@ export async function saveMappingAction(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     await saveMapping(p);
+    revalidatePath("/mapping");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof ApiError ? `${e.status}: ${e.message}` : String(e) };
+  }
+}
+
+export async function deleteMappingAction(
+  id: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await deleteMapping(id);
     revalidatePath("/mapping");
     return { ok: true };
   } catch (e) {

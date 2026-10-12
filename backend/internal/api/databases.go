@@ -125,8 +125,11 @@ func (s *Server) runDatabase(w http.ResponseWriter, r *http.Request) {
 			"подписываются автоматически в течение нескольких минут, либо запустите dump на Source заново")
 		return
 	}
+	// Ручной запуск без event_key: ключ уникален навсегда (и для failed), так
+	// что повтор того же дампа упирался бы в него. От параллельных запусков
+	// защищает backup_runs_one_active.
 	run, err := s.d.Operator.StartRestore(r.Context(), m, newest.Key, checksum, bucketID,
-		model.TriggerManual, operator.EventKeyFor("restore", newest.Key)+":manual")
+		model.TriggerManual, "")
 	if err != nil {
 		writeRunStartError(w, err)
 		return

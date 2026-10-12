@@ -189,3 +189,5 @@ export interface MappingPayload {
 }
 export const saveMapping = (p: MappingPayload) =>
   apiFetch<DatabaseMapping>("/api/mapping", { method: "POST", body: JSON.stringify(p) });
+export const deleteMapping = (id: string) =>
+  apiFetch<void>(`/api/mapping/${id}`, { method: "DELETE" });

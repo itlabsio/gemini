@@ -104,3 +104,16 @@ func (s *Store) EnabledMappings(ctx context.Context) ([]model.DatabaseMapping, e
 	}
 	return out, rows.Err()
 }
+
+// DeleteMapping разрывает сопоставление. Restore-CronJob целевой базы убирает
+// очередной reconcileTemplates — его больше нет среди EnabledMappings.
+func (s *Store) DeleteMapping(ctx context.Context, id string) error {
+	ct, err := s.pool.Exec(ctx, `DELETE FROM database_mappings WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

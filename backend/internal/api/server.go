@@ -102,6 +102,7 @@ func NewRouter(d Deps) http.Handler {
 		apiR.HandleFunc("/mapping/candidates", auth.RequireRole(auth.RoleViewer, s.mappingCandidates)).Methods(http.MethodGet)
 		apiR.HandleFunc("/mapping", auth.RequireRole(auth.RoleViewer, s.listMappings)).Methods(http.MethodGet)
 		apiR.HandleFunc("/mapping", auth.RequireRole(auth.RoleAdmin, s.saveMapping)).Methods(http.MethodPost)
+		apiR.HandleFunc("/mapping/{id}", auth.RequireRole(auth.RoleAdmin, s.deleteMapping)).Methods(http.MethodDelete)
 	}
 
 	// --- Публичный: обмен pairing (одноразовый код) ---

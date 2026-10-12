@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/gorilla/mux"
+
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/store"
 )
 
@@ -160,4 +162,16 @@ func (s *Server) saveMapping(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit(r, "mapping.save", m.ID, nil)
 	writeJSON(w, http.StatusOK, m)
+}
+
+// deleteMapping разрывает связь source-базы с целевой: webhook и поллер
+// перестают запускать restore в эту базу. Сама целевая база не трогается.
+func (s *Server) deleteMapping(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	if err := s.d.Store.DeleteMapping(r.Context(), id); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.audit(r, "mapping.delete", id, nil)
+	w.WriteHeader(http.StatusNoContent)
 }
