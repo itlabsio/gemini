@@ -112,3 +112,34 @@ func TestPGToolFallsBackToPATH(t *testing.T) {
 		t.Errorf("pgTool(pg_restore, 17) with no libexec = %q, want pg_restore", got)
 	}
 }
+
+func TestFilterTOC(t *testing.T) {
+	lines := []string{
+		"; Selected TOC Entries:",
+		"2; 3079 16385 EXTENSION - postgis ",
+		"3499; 0 0 COMMENT - EXTENSION postgis ",
+		"216; 1259 16466 TABLE public t postgres",
+		"5432; 0 16400 TABLE DATA public spatial_ref_sys postgres",
+		"3492; 0 16466 TABLE DATA public t postgres",
+		"5433; 0 0 SEQUENCE SET public t_id_seq postgres",
+		"",
+	}
+	cfg := map[string]bool{"public.spatial_ref_sys": true}
+	kept, ext, data := filterTOC(lines, cfg)
+	want := []string{
+		"; Selected TOC Entries:",
+		"216; 1259 16466 TABLE public t postgres",
+		"3492; 0 16466 TABLE DATA public t postgres",
+		"5433; 0 0 SEQUENCE SET public t_id_seq postgres",
+		"",
+	}
+	if !slices.Equal(kept, want) {
+		t.Errorf("kept = %q, want %q", kept, want)
+	}
+	if ext != 2 {
+		t.Errorf("droppedExt = %d, want 2", ext)
+	}
+	if !slices.Equal(data, []string{"public.spatial_ref_sys"}) {
+		t.Errorf("droppedData = %v, want [public.spatial_ref_sys]", data)
+	}
+}

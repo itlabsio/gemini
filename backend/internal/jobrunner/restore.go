@@ -297,8 +297,9 @@ func terminateBackends(ctx context.Context, e Env, connectDB, targetDB string) e
 //   - --use-list: если архив снят pg_dump <17 (без --exclude-extension), из TOC
 //     вырезаются EXTENSION-записи — их DROP под MDB in_place падает "must be
 //     owner of extension". Нужные расширения уже создал ensureExtensions.
+//     Заодно вырезаются данные их конфиг-таблиц (spatial_ref_sys и т.п.).
 func pgRestore(ctx context.Context, e Env, database, dumpPath string, clean bool) error {
-	listPath, err := extensionFreeTOCList(ctx, e, dumpPath)
+	listPath, err := extensionFreeTOCList(ctx, e, database, dumpPath)
 	if err != nil {
 		return fmt.Errorf("build restore TOC list: %w", err)
 	}

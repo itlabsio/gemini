@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -132,28 +133,82 @@ var tocExtensionEntry = regexp.MustCompile(`^\d+;\s+\d+\s+\d+\s+(EXTENSION\b|(?:
 // extension", а нужные расширения создаёт ensureExtensions до наката. Архивы
 // pg_dump ≥17 снимаются с --exclude-extension — EXTENSION-записей нет, функция
 // возвращает "" и --use-list не нужен.
-func extensionFreeTOCList(ctx context.Context, e Env, dumpPath string) (string, error) {
+//
+// Вместе с EXTENSION вырезаются TABLE DATA / SEQUENCE SET конфиг-таблиц
+// расширений (pg_extension.extconfig, напр. postgis spatial_ref_sys): pg_dump <17
+// кладёт их данные в архив, а под --role=<owner> COPY в таблицу, созданную
+// restorer'ом в ensureExtensions, падает "permission denied". pg_dump ≥17 с
+// --exclude-extension их тоже не дампит — поведение одинаковое. Список
+// конфиг-таблиц читаем из database (расширения там уже созданы).
+func extensionFreeTOCList(ctx context.Context, e Env, database, dumpPath string) (string, error) {
 	out, err := exec.CommandContext(ctx, pgTool("pg_restore", e.pgMajor), "--list", dumpPath).Output()
 	if err != nil {
 		return "", fmt.Errorf("pg_restore --list: %w", err)
 	}
 	lines := strings.Split(string(out), "\n")
-	kept := make([]string, 0, len(lines))
-	dropped := 0
-	for _, ln := range lines {
-		if tocExtensionEntry.MatchString(ln) {
-			dropped++
-			continue
-		}
-		kept = append(kept, ln)
-	}
-	if dropped == 0 {
+	if !slices.ContainsFunc(lines, tocExtensionEntry.MatchString) {
 		return "", nil
 	}
+	cfg, err := extensionConfigTables(ctx, e, database)
+	if err != nil {
+		return "", fmt.Errorf("list extension config tables: %w", err)
+	}
+	kept, droppedExt, droppedData := filterTOC(lines, cfg)
 	path := filepath.Join(e.WorkDir, "restore.toc")
 	if err := os.WriteFile(path, []byte(strings.Join(kept, "\n")), 0o600); err != nil {
 		return "", err
 	}
-	log.Printf("restore: TOC filter dropped %d EXTENSION entr(y/ies) (archive from pg_dump without --exclude-extension)", dropped)
+	log.Printf("restore: TOC filter dropped %d EXTENSION entr(y/ies) (archive from pg_dump without --exclude-extension)", droppedExt)
+	if len(droppedData) > 0 {
+		log.Printf("restore: TOC filter dropped data of extension config table(s): %s", strings.Join(droppedData, ", "))
+	}
 	return path, nil
+}
+
+// tocDataEntry матчит записи с данными таблиц/последовательностей:
+//
+//	5432; 0 16400 TABLE DATA public spatial_ref_sys postgres
+//	5433; 0 0 SEQUENCE SET public some_seq postgres
+var tocDataEntry = regexp.MustCompile(`^\d+;\s+\d+\s+\d+\s+(?:TABLE DATA|SEQUENCE SET)\s+(\S+)\s+(\S+)`)
+
+// filterTOC выкидывает из строк `pg_restore --list` EXTENSION-записи и данные
+// конфиг-таблиц расширений (cfg — множество "schema.name").
+func filterTOC(lines []string, cfg map[string]bool) (kept []string, droppedExt int, droppedData []string) {
+	kept = make([]string, 0, len(lines))
+	for _, ln := range lines {
+		if tocExtensionEntry.MatchString(ln) {
+			droppedExt++
+			continue
+		}
+		if m := tocDataEntry.FindStringSubmatch(ln); m != nil && cfg[m[1]+"."+m[2]] {
+			droppedData = append(droppedData, m[1]+"."+m[2])
+			continue
+		}
+		kept = append(kept, ln)
+	}
+	return kept, droppedExt, droppedData
+}
+
+// extensionConfigTables — конфиг-таблицы/последовательности всех расширений в
+// database как множество "schema.name".
+func extensionConfigTables(ctx context.Context, e Env, database string) (map[string]bool, error) {
+	cmd := exec.CommandContext(ctx, pgTool("psql", e.pgMajor), "--set", "ON_ERROR_STOP=1",
+		"--no-psqlrc", "--tuples-only", "--no-align", "--quiet",
+		"--command", `SELECT n.nspname || '.' || c.relname
+		 FROM pg_extension x, unnest(x.extconfig) AS cfg(oid)
+		 JOIN pg_class c ON c.oid = cfg.oid
+		 JOIN pg_namespace n ON n.oid = c.relnamespace;`)
+	cmd.Env = e.pgEnv(database)
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	set := map[string]bool{}
+	for _, ln := range strings.Split(string(out), "\n") {
+		if ln = strings.TrimSpace(ln); ln != "" {
+			set[ln] = true
+		}
+	}
+	return set, nil
 }
