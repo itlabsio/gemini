@@ -86,8 +86,13 @@ func runRestore(ctx context.Context, e Env) error {
 
 	// Версию сервера читаем best-effort: не смогли — не блокируем restore, просто
 	// теряем защиту от «вниз по мажорам» (её всё равно поймает pg_restore).
+	// recreate ходит в служебную postgres: target-базы может и не быть.
+	versionDB := target
+	if e.RestoreMode == "" || e.RestoreMode == "recreate" {
+		versionDB = "postgres"
+	}
 	targetMajor := 0
-	if n, verr := serverVersionNum(ctx, e, target); verr != nil {
+	if n, verr := serverVersionNum(ctx, e, versionDB); verr != nil {
 		log.Printf("restore: cannot read target server version (%v); skipping major preflight", verr)
 	} else {
 		targetMajor = majorFromVersionNum(n)
@@ -135,38 +140,53 @@ func downloadDump(ctx context.Context, e Env, dumpPath string) (storage.JobBucke
 // restoreRecreate: RENAME старую базу, создать новую, накатить, выставить
 // владельца, снести старую. Всё до DROP обратимо — при ошибке старая база
 // остаётся под именем <target>_old_<ts>, прогон падает.
+//
+// Если target-базы нет (удалили руками или прошлый прогон упал между RENAME и
+// CREATE), просто создаём её: переименовывать и сносить нечего.
 func restoreRecreate(ctx context.Context, e Env, target, dumpPath string) error {
 	oldName := fmt.Sprintf("%s_old_%s", target, time.Now().UTC().Format("20060102t150405z"))
 
-	if err := terminateBackends(ctx, e, "postgres", target); err != nil {
-		return fmt.Errorf("terminate backends: %w", err)
+	// kept — хвост сообщений об ошибке: где осталась прежняя копия.
+	kept := ""
+	exists, err := databaseExists(ctx, e, target)
+	if err != nil {
+		return fmt.Errorf("check database %s: %w", target, err)
 	}
-
-	if err := psqlExec(ctx, e, "postgres",
-		fmt.Sprintf(`ALTER DATABASE %s RENAME TO %s;`, quoteIdent(target), quoteIdent(oldName)),
-	); err != nil {
-		return fmt.Errorf("rename %s -> %s: %w", target, oldName, err)
+	if exists {
+		if err := terminateBackends(ctx, e, "postgres", target); err != nil {
+			return fmt.Errorf("terminate backends: %w", err)
+		}
+		if err := psqlExec(ctx, e, "postgres",
+			fmt.Sprintf(`ALTER DATABASE %s RENAME TO %s;`, quoteIdent(target), quoteIdent(oldName)),
+		); err != nil {
+			return fmt.Errorf("rename %s -> %s: %w", target, oldName, err)
+		}
+		log.Printf("restore: renamed %s -> %s", target, oldName)
+		kept = fmt.Sprintf(" (old kept as %s)", oldName)
+	} else {
+		log.Printf("restore: database %s does not exist, creating it from scratch", target)
 	}
-	log.Printf("restore: renamed %s -> %s", target, oldName)
 
 	createSQL := fmt.Sprintf(`CREATE DATABASE %s`, quoteIdent(target))
 	if e.TargetDBOwner != "" {
 		createSQL += fmt.Sprintf(` OWNER %s`, quoteIdent(e.TargetDBOwner))
 	}
 	if err := psqlExec(ctx, e, "postgres", createSQL+";"); err != nil {
-		return fmt.Errorf("create database %s (old kept as %s): %w", target, oldName, err)
+		return fmt.Errorf("create database %s%s: %w", target, kept, err)
 	}
 	if err := ensureExtensions(ctx, e, target); err != nil {
-		return fmt.Errorf("ensure extensions in %s (old kept as %s): %w", target, oldName, err)
+		return fmt.Errorf("ensure extensions in %s%s: %w", target, kept, err)
 	}
 	if err := pgRestore(ctx, e, target, dumpPath, false); err != nil {
-		return fmt.Errorf("restore into %s (old kept as %s): %w", target, oldName, err)
+		return fmt.Errorf("restore into %s%s: %w", target, kept, err)
 	}
 
-	if err := psqlExec(ctx, e, "postgres",
-		fmt.Sprintf(`DROP DATABASE %s;`, quoteIdent(oldName)),
-	); err != nil {
-		log.Printf("restore: WARNING failed to drop %s: %v (restore itself succeeded)", oldName, err)
+	if exists {
+		if err := psqlExec(ctx, e, "postgres",
+			fmt.Sprintf(`DROP DATABASE %s;`, quoteIdent(oldName)),
+		); err != nil {
+			log.Printf("restore: WARNING failed to drop %s: %v (restore itself succeeded)", oldName, err)
+		}
 	}
 	log.Printf("restore: done (recreate)")
 	return nil
@@ -236,6 +256,20 @@ func downloadExtensionList(ctx context.Context, e Env) ([]string, error) {
 		}
 	}
 	return names, nil
+}
+
+// databaseExists проверяет наличие базы через служебную postgres.
+func databaseExists(ctx context.Context, e Env, name string) (bool, error) {
+	cmd := exec.CommandContext(ctx, pgTool("psql", e.pgMajor), "--set", "ON_ERROR_STOP=1",
+		"--no-psqlrc", "--tuples-only", "--no-align", "--quiet",
+		"--command", fmt.Sprintf(`SELECT 1 FROM pg_database WHERE datname = %s;`, quoteLit(name)))
+	cmd.Env = e.pgEnv("postgres")
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(string(out)) == "1", nil
 }
 
 // terminateBackends обрывает чужие сессии к targetDB, подключаясь к connectDB.
