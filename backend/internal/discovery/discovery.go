@@ -4,12 +4,14 @@ package discovery
 import (
 	"context"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // BuiltinExcluded — базы, которые discovery отбрасывает всегда: postgres в
@@ -104,6 +106,28 @@ type Result struct {
 	ServerVersionNum int
 }
 
+// connectHint — подсказка к ошибке подключения по её реальной причине: базы нет
+// (сервер — 3D000, PgBouncer — "no such database") или PgBouncer не может
+// залогиниться в сервер за ним. Прочие ошибки — без подсказки.
+func connectHint(err error, db string) string {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return ""
+	}
+	msg := strings.ToLower(pgErr.Message)
+	switch {
+	case pgErr.Code == "3D000" || strings.Contains(msg, "no such database"):
+		return fmt.Sprintf(" (базы %q нет — укажите существующую в discovery_db инстанса; "+
+			"в Yandex Managed PostgreSQL базы postgres в пуле нет)", db)
+	case strings.Contains(msg, "server login has been failing") ||
+		strings.Contains(msg, "server_login_retry"):
+		return " (PgBouncer не может подключиться к PostgreSQL за ним: сервер недоступен/перезапускается, " +
+			"исчерпан max_connections или не подходит пароль пользователя на сервере; " +
+			"PgBouncer кэширует ошибку на server_login_retry секунд — повторите позже)"
+	}
+	return ""
+}
+
 // ListDatabases возвращает список баз инстанса и версию его сервера.
 func ListDatabases(ctx context.Context, t Target) (*Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -115,10 +139,7 @@ func ListDatabases(ctx context.Context, t Target) (*Result, error) {
 	}
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("connect to database %q: %w "+
-			"(если базы %q нет — укажите существующую в discovery_db инстанса; "+
-			"в Yandex Managed PostgreSQL базы postgres в пуле нет)",
-			t.adminDB(), err, t.adminDB())
+		return nil, fmt.Errorf("connect to database %q: %w%s", t.adminDB(), err, connectHint(err, t.adminDB()))
 	}
 	defer conn.Close(ctx)
 
