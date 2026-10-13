@@ -74,13 +74,16 @@ func runDump(ctx context.Context, e Env) error {
 	dumpPath := filepath.Join(e.WorkDir, "db.dump")
 
 	// Мажор pg_dump = мажор сервера-источника: архив ляжет в формате этой версии
-	// и не потащит GUC, которых на нём нет. Не смогли прочитать версию — идём на
-	// дефолтном бинаре.
+	// и не потащит GUC, которых на нём нет. Не смогли прочитать версию — падаем:
+	// дефолтный бинарь (старший мажор в образе) снял бы архив, который не
+	// накатится ни в один Target старше. Без versioned-клиентов (dev/CI) — PATH.
 	avail := availablePGMajors()
 	var srcMajor int
-	if n, err := serverVersionNum(ctx, e, e.PGDatabase); err != nil {
-		log.Printf("dump: cannot read source server version (%v); using default pg_dump", err)
-	} else {
+	if len(avail) > 0 {
+		n, err := serverVersionNumRetry(ctx, e, e.PGDatabase)
+		if err != nil {
+			return fmt.Errorf("dump: cannot read source server version, refusing to pick pg_dump blindly: %w", err)
+		}
 		srcMajor = majorFromVersionNum(n)
 	}
 	if srcMajor > 0 && len(avail) > 0 && srcMajor > avail[len(avail)-1] {

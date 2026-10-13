@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Клиентские утилиты PostgreSQL в образе разложены по мажорам:
@@ -96,6 +97,25 @@ func serverVersionNum(ctx context.Context, e Env, database string) (int, error) 
 		return 0, err
 	}
 	return strconv.Atoi(strings.TrimSpace(string(out)))
+}
+
+// serverVersionNumRetry — serverVersionNum с несколькими попытками: разовый
+// сетевой сбой (переключение мастера MDB, connect timeout) не должен ронять dump.
+func serverVersionNumRetry(ctx context.Context, e Env, database string) (int, error) {
+	var err error
+	for attempt := 1; attempt <= 3; attempt++ {
+		var n int
+		if n, err = serverVersionNum(ctx, e, database); err == nil {
+			return n, nil
+		}
+		log.Printf("dump: read server version (attempt %d/3): %v", attempt, err)
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		case <-time.After(time.Duration(attempt) * 5 * time.Second):
+		}
+	}
+	return 0, err
 }
 
 var pgDumpVersionRe = regexp.MustCompile(`(?i)dumped by pg_dump version:\s*(\d+)`)
