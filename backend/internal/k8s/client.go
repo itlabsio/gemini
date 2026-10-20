@@ -25,7 +25,8 @@ const (
 	LabelRunID      = "gemini.itlabs.io/run-id"
 	LabelDatabaseID = "gemini.itlabs.io/database-id"
 	LabelInstanceID = "gemini.itlabs.io/instance-id"
-	LabelTrigger    = "gemini.itlabs.io/trigger" // "manual" | "scheduled" (на Job'е)
+	LabelTrigger    = "gemini.itlabs.io/trigger"   // "manual" | "scheduled" (на Job'е)
+	LabelHeadRole   = "gemini.itlabs.io/head-role" // "source" | "target" — голова-владелец объекта
 	ManagedByValue  = "gemini"
 )
 
@@ -33,6 +34,10 @@ const (
 type Client struct {
 	cs        kubernetes.Interface
 	namespace string
+	// headRole — роль этой головы. В одном namespace может жить несколько голов,
+	// поэтому все списки для reconcile фильтруются по instance, а без него — по
+	// роли (см. owns), иначе голова сочтёт объекты соседней осиротевшими и удалит их.
+	headRole string
 
 	// Проставляются во все создаваемые объекты (Job / CronJob / ephemeral Secret).
 	// Заполняются из Deployment'а backend'а в ResolveOwner.
@@ -88,7 +93,7 @@ func (c *Client) ownerRefs() []metav1.OwnerReference {
 
 // New создаёт клиента: сначала пытается in-cluster config, затем ~/.kube/config
 // (или $KUBECONFIG) — удобно для локального запуска.
-func New(namespace string) (*Client, error) {
+func New(namespace, headRole string) (*Client, error) {
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
 		kubeconfig := os.Getenv("KUBECONFIG")
@@ -106,20 +111,24 @@ func New(namespace string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("k8s clientset: %w", err)
 	}
-	return &Client{cs: cs, namespace: namespace}, nil
+	return &Client{cs: cs, namespace: namespace, headRole: headRole}, nil
 }
 
 // Namespace отдаёт целевой namespace.
 func (c *Client) Namespace() string { return c.namespace }
 
 // ownerLabels — общий набор лейблов для объектов прогона. instance (релиз головы)
-// добавляется как app.kubernetes.io/instance, чтобы объекты были видны в дереве Argo CD.
-func ownerLabels(component, runID, databaseID, instance string) map[string]string {
+// добавляется как app.kubernetes.io/instance, чтобы объекты были видны в дереве Argo CD;
+// роль головы — чтобы соседняя голова в том же namespace не считала их своими.
+func (c *Client) ownerLabels(component, runID, databaseID, instance string) map[string]string {
 	l := map[string]string{
 		LabelManagedBy: ManagedByValue,
 		LabelName:      ManagedByValue,
 		LabelPartOf:    ManagedByValue,
 		LabelComponent: component,
+	}
+	if c.headRole != "" {
+		l[LabelHeadRole] = c.headRole
 	}
 	if runID != "" {
 		l[LabelRunID] = runID
@@ -131,6 +140,32 @@ func ownerLabels(component, runID, databaseID, instance string) map[string]strin
 		l[LabelInstance] = instance
 	}
 	return l
+}
+
+// owns — принадлежит ли объект Gemini с такими лейблами этой голове.
+// Главный признак — app.kubernetes.io/instance: релиз уникален, а голов одной
+// роли в namespace может быть несколько. Если instance головы известен, объект
+// без него или с другим — чужой (свои нужные CronJob'ы/секреты получат лейбл при
+// ближайшем reconcile). Если instance головы неизвестен (ResolveOwner не
+// отработал) — по head-role, а у объектов без него — по component (dump — всегда
+// Source, restore — всегда Target).
+func (c *Client) owns(labels map[string]string) bool {
+	if c.instanceLabel != "" {
+		return labels[LabelInstance] == c.instanceLabel
+	}
+	if c.headRole == "" {
+		return true
+	}
+	if role := labels[LabelHeadRole]; role != "" {
+		return role == c.headRole
+	}
+	switch labels[LabelComponent] {
+	case "dump":
+		return c.headRole == "source"
+	case "restore":
+		return c.headRole == "target"
+	}
+	return false
 }
 
 // pullSecretRefs преобразует имена в []LocalObjectReference (nil при пустом списке).

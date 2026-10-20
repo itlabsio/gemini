@@ -114,7 +114,7 @@ func (c *Client) DeleteJob(ctx context.Context, name string) error {
 	return err
 }
 
-// ListManagedJobs возвращает статус всех Job'ов, помеченных Gemini.
+// ListManagedJobs возвращает статус Job'ов Gemini этой головы.
 func (c *Client) ListManagedJobs(ctx context.Context) ([]JobStatus, error) {
 	list, err := c.cs.BatchV1().Jobs(c.namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: LabelManagedBy + "=" + ManagedByValue,
@@ -124,6 +124,9 @@ func (c *Client) ListManagedJobs(ctx context.Context) ([]JobStatus, error) {
 	}
 	out := make([]JobStatus, 0, len(list.Items))
 	for i := range list.Items {
+		if !c.owns(list.Items[i].Labels) {
+			continue
+		}
 		out = append(out, jobStatus(&list.Items[i]))
 	}
 	return out, nil

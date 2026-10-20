@@ -21,7 +21,7 @@ func CredsSecretName(instanceID string) string {
 // UpsertCredsSecret создаёт/обновляет секрет кред инстанса.
 func (c *Client) UpsertCredsSecret(ctx context.Context, instanceID string, data map[string]string) (string, error) {
 	name := CredsSecretName(instanceID)
-	meta := objectMeta(name, ownerLabels("credentials", "", "", c.instanceLabel))
+	meta := objectMeta(name, c.ownerLabels("credentials", "", "", c.instanceLabel))
 	meta.Labels[LabelInstanceID] = instanceID
 	meta.OwnerReferences = c.ownerRefs()
 	sec := &corev1.Secret{ObjectMeta: meta, StringData: data, Type: corev1.SecretTypeOpaque}
@@ -53,7 +53,7 @@ func (c *Client) DeleteCredsSecret(ctx context.Context, instanceID string) error
 	return err
 }
 
-// ListManagedCredsSecrets возвращает instanceID → имя всех секретов кред Gemini
+// ListManagedCredsSecrets возвращает instanceID → имя секретов кред этой головы
 // (для сверки при reconcile).
 func (c *Client) ListManagedCredsSecrets(ctx context.Context) (map[string]string, error) {
 	list, err := c.cs.CoreV1().Secrets(c.namespace).List(ctx, metav1.ListOptions{
@@ -65,6 +65,9 @@ func (c *Client) ListManagedCredsSecrets(ctx context.Context) (map[string]string
 	out := map[string]string{}
 	for i := range list.Items {
 		s := &list.Items[i]
+		if !c.owns(s.Labels) {
+			continue
+		}
 		if id := s.Labels[LabelInstanceID]; id != "" {
 			out[id] = s.Name
 		}

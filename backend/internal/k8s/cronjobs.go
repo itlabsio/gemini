@@ -79,7 +79,7 @@ func (c *Client) ReconcileCronJob(ctx context.Context, s CronSpec) error {
 	if s.ImagePullPolicy == "" {
 		s.ImagePullPolicy = corev1.PullIfNotPresent
 	}
-	labels := ownerLabels(s.Kind, "", s.DatabaseID, s.InstanceLabel)
+	labels := c.ownerLabels(s.Kind, "", s.DatabaseID, s.InstanceLabel)
 	labels[LabelTrigger] = "scheduled" // Job'ы, которые создаст сам CronJob
 	tz := s.TimeZone
 	if tz == "" {
@@ -225,7 +225,7 @@ type ManagedCronJob struct {
 	DatabaseID string
 }
 
-// ListManagedCronJobs возвращает все CronJob'ы Gemini в namespace.
+// ListManagedCronJobs возвращает CronJob'ы Gemini этой головы в namespace.
 func (c *Client) ListManagedCronJobs(ctx context.Context) ([]ManagedCronJob, error) {
 	list, err := c.cs.BatchV1().CronJobs(c.namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: LabelManagedBy + "=" + ManagedByValue,
@@ -236,6 +236,9 @@ func (c *Client) ListManagedCronJobs(ctx context.Context) ([]ManagedCronJob, err
 	out := make([]ManagedCronJob, 0, len(list.Items))
 	for i := range list.Items {
 		cj := &list.Items[i]
+		if !c.owns(cj.Labels) {
+			continue
+		}
 		kind := cj.Labels[LabelComponent]
 		dbID := cj.Labels[LabelDatabaseID]
 		if kind == "" || dbID == "" {

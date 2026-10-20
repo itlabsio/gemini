@@ -138,7 +138,7 @@ func runServe() {
 	sc := storage.NewPool(builtIn, st.EnabledS3Buckets)
 
 	var kc *k8s.Client
-	if kc, err = k8s.New(cfg.K8sNamespace); err != nil {
+	if kc, err = k8s.New(cfg.K8sNamespace, string(cfg.Role)); err != nil {
 		log.Printf("gemini: kubernetes client unavailable (%v) — job orchestration disabled", err)
 		kc = nil
 	} else if err := kc.ResolveOwner(ctx, cfg.JobOwnerDeployment); err != nil {
