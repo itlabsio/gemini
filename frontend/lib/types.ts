@@ -115,6 +115,8 @@ export interface HeadPairing {
   peer_role: string;
   peer_url: string;
   status: "pending" | "active" | "revoked";
+  /** Публичный ключ пира, запомненный при pairing (base64 Ed25519). */
+  peer_public_key?: string;
   established_at?: string;
   created_at: string;
 }

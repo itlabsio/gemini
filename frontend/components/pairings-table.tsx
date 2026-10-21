@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Trash2, Unlink } from "lucide-react";
+import { Check, Copy, Trash2, Unlink } from "lucide-react";
 import type { HeadPairing } from "@/lib/types";
 import { LocalDateTime } from "@/components/local-date-time";
 import { deletePairingAction, revokePairingAction } from "@/app/pairing/actions";
@@ -62,6 +62,7 @@ export function PairingsTable({
             <TableRow>
               <TableHead>Пир</TableHead>
               <TableHead>URL</TableHead>
+              <TableHead>Ключ пира</TableHead>
               <TableHead>Статус</TableHead>
               <TableHead>Установлена</TableHead>
               {canDelete && <TableHead className="text-right" />}
@@ -77,6 +78,13 @@ export function PairingsTable({
                 </TableCell>
                 <TableCell className="font-mono text-xs">
                   {p.peer_url || "—"}
+                </TableCell>
+                <TableCell>
+                  {p.peer_public_key ? (
+                    <PeerKey value={p.peer_public_key} />
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <StatusBadge status={p.status} />
@@ -112,7 +120,7 @@ export function PairingsTable({
             {pairings.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={canDelete ? 5 : 4}
+                  colSpan={canDelete ? 6 : 5}
                   className="py-10 text-center text-muted-foreground"
                 >
                   Связей нет
@@ -137,8 +145,9 @@ export function PairingsTable({
                 <>
                   Общий секрет пары «{target?.peer_role}» будет стёрт. Обмен с
                   этим контуром прекратится: подписанные запросы пира начнут
-                  отбиваться. Вторую голову нужно будет разорвать отдельно, а для
-                  повторного соединения — пройти pairing заново с обеих сторон
+                  отбиваться. На втором инстансе связь нужно будет разорвать
+                  отдельно, а для повторного соединения — пройти pairing заново
+                  с обеих сторон
                 </>
               ) : (
                 <>
@@ -170,5 +179,32 @@ export function PairingsTable({
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+/** Ключ пира целиком (сверяется символ в символ) и кнопка копирования. */
+function PeerKey({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  function copy() {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <span className="font-mono text-xs break-all">{value}</span>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="flex-none"
+        onClick={copy}
+        aria-label="Копировать ключ пира"
+      >
+        {copied ? <Check /> : <Copy />}
+      </Button>
+    </div>
   );
 }

@@ -144,8 +144,9 @@ type HeadPairing struct {
 	Status   PairingStatus `json:"status"`
 
 	// PeerPublicKey — публичный ключ пира (base64 Ed25519), запиненный при
-	// pairing. Наружу в JSON не отдаётся.
-	PeerPublicKey string `json:"-"`
+	// pairing. Не секрет: UI показывает его, чтобы сверить с ключом, который
+	// вторая голова показывает как свой (head_public_key).
+	PeerPublicKey string `json:"peer_public_key,omitempty"`
 
 	EstablishedAt *time.Time `json:"established_at,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`

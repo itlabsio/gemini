@@ -68,7 +68,7 @@ func (s *Server) issuePairingCode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"code":               code,
 		"expires_in_seconds": int(pairingCodeTTL.Seconds()),
-		"note":               "введите этот код и URL Source-головы на стороне DR; код одноразовый",
+		"note":               "введите этот код и URL Source-инстанса на стороне DR; код одноразовый",
 	})
 }
 
