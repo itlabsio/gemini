@@ -235,6 +235,9 @@ type BackupRun struct {
 	ErrorMessage string     `json:"error_message,omitempty"`
 	InitiatedBy  string     `json:"initiated_by"`
 
+	// OwnerHead — UID Deployment'а головы, создавшей прогон ("" — до миграции 017).
+	OwnerHead string `json:"-"`
+
 	// PeerStatuses — исход применения этого дампа каждым Target-контуром
 	// (Source заполняет из обратных webhook'ов restore-status). Пусто на Target.
 	PeerStatuses []RunPeerStatus `json:"peer_statuses,omitempty"`

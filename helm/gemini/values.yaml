@@ -31,7 +31,8 @@ imagePullSecrets: []
 publicUrl: ""
 
 backend:
-  # -- Число реплик backend
+  # -- Число реплик backend. API обслуживают все, фоновые циклы (watcher, CronJob-шаблоны,
+  #    poller, до-подпись) — только лидер по Lease <fullname>-backend-leader
   replicas: 1
   # -- Сколько старых ReplicaSet'ов хранить для отката
   revisionHistoryLimit: 1

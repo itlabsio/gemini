@@ -36,6 +36,10 @@ type Operator struct {
 
 	// baseOverrides — nodeSelector/tolerations/affinity/resources из values Helm-чарта.
 	baseOverrides k8s.PodOverrides
+
+	// warnedForeign — прогоны чужих голов, о которых reaper уже предупредил
+	// (трогает только горутина watcher'а).
+	warnedForeign map[string]bool
 }
 
 // New собирает Operator. k8s может быть nil при локальной разработке —
@@ -46,7 +50,8 @@ func New(cfg *config.Config, st *store.Store, kc *k8s.Client, vc *vault.Client,
 	if err != nil {
 		log.Printf("operator: %v — job pod overrides ignored", err)
 	}
-	return &Operator{cfg: cfg, store: st, k8s: kc, vault: vc, buckets: sc, notifier: nt, peer: pc, baseOverrides: ovr}
+	return &Operator{cfg: cfg, store: st, k8s: kc, vault: vc, buckets: sc, notifier: nt, peer: pc, baseOverrides: ovr,
+		warnedForeign: map[string]bool{}}
 }
 
 // jobParams разрешает временное хранилище, ресурсы и TTL (секунды) для Job'ов базы:
@@ -465,6 +470,10 @@ func (o *Operator) CancelRun(ctx context.Context, runID, by string) (*model.Back
 // прежде чем reaper принудительно закроет его как failed.
 const stuckRunGrace = 15 * time.Minute
 
+// foreignRunGrace — когда reaper закрывает прогон чужой (или неизвестной) головы:
+// дольше activeDeadlineSeconds Job не живёт, так что такой прогон точно мёртв.
+const foreignRunGrace = k8s.JobActiveDeadline + stuckRunGrace
+
 func (o *Operator) reconcileOnce(ctx context.Context) error {
 	statuses, err := o.k8s.ListManagedJobs(ctx)
 	if err != nil {
@@ -522,9 +531,21 @@ func (o *Operator) reapStuckRuns(ctx context.Context, statuses []k8s.JobStatus) 
 			liveByRun[js.RunID] = true
 		}
 	}
+	me := o.store.OwnerHead()
 	for i := range stale {
 		run := stale[i]
 		if liveByRun[run.ID] || (run.K8sJobName != "" && liveByName[run.K8sJobName]) {
+			continue
+		}
+		// Job'ы чужой головы (другой релиз/кластер на той же БД — ошибка
+		// конфигурации) этой голове не видны: закрываем такой прогон, только
+		// когда его Job гарантированно мёртв (activeDeadlineSeconds + запас).
+		if me != "" && run.OwnerHead != me && time.Since(run.CreatedAt) < foreignRunGrace {
+			if run.OwnerHead != "" && !o.warnedForeign[run.ID] {
+				o.warnedForeign[run.ID] = true
+				log.Printf("operator: WARNING run %s belongs to another head (deployment uid %s, this head %s) — "+
+					"is another Gemini instance using this metadata DB?", run.ID, run.OwnerHead, me)
+			}
 			continue
 		}
 		log.Printf("operator: reaper — run %s (%s, job=%q) active %s+ with no Job in cluster → failed",
@@ -562,7 +583,12 @@ func (o *Operator) runForJob(ctx context.Context, js k8s.JobStatus) *model.Backu
 		InitiatedBy: "cronjob",
 	})
 	if errors.Is(err, store.ErrConflict) {
-		// уже есть активный прогон этой базы — параллельный Job лишний
+		// Дубль event_key: этот Job только что усыновили (старый лидер в момент
+		// смены аренды) — берём тот прогон, Job не трогаем.
+		if r, err := o.store.RunByEventKey(ctx, eventKey); err == nil {
+			return r
+		}
+		// Иначе уже есть активный прогон этой базы — параллельный Job лишний.
 		_ = o.k8s.DeleteJob(ctx, js.Name)
 		return nil
 	}

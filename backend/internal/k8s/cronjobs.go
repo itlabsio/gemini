@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"strings"
+	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -14,6 +15,9 @@ import (
 // neverSchedule — синтаксически валидный cron, который никогда не срабатывает
 // (31 февраля). Используется для suspend-CronJob'ов без расписания.
 const neverSchedule = "0 0 31 2 *"
+
+// JobActiveDeadline — activeDeadlineSeconds dump/restore-Job'ов: дольше Job не живёт.
+const JobActiveDeadline = 6 * time.Hour
 
 // defaultJobTTLSeconds — TTL завершённых Job'ов, если CronSpec его не задал.
 const defaultJobTTLSeconds int32 = 300
@@ -168,7 +172,7 @@ func (c *Client) ReconcileCronJob(ctx context.Context, s CronSpec) error {
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: batchv1.JobSpec{
 					BackoffLimit:            int32Ptr(1),
-					ActiveDeadlineSeconds:   int64Ptr(6 * 3600),
+					ActiveDeadlineSeconds:   int64Ptr(int64(JobActiveDeadline / time.Second)),
 					TTLSecondsAfterFinished: int32Ptr(ttl),
 					Template: corev1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{Labels: labels},

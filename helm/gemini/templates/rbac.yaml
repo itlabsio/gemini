@@ -52,6 +52,15 @@ rules:
     resources: ["deployments"]
     verbs: ["get"]
     resourceNames: ["{{ include "gemini.fullname" . }}-backend"]
+  # выбор лидера среди реплик backend'а: фоновые циклы крутит только он.
+  # create не ограничивается resourceNames — отдельным правилом.
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "update"]
+    resourceNames: ["{{ include "gemini.fullname" . }}-backend-leader"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

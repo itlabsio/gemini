@@ -22,12 +22,23 @@ var ErrConflict = errors.New("conflict")
 type Store struct {
 	pool *pgxpool.Pool
 	box  *secretcrypto.Box
+
+	// ownerHead — идентичность головы (UID Deployment'а backend'а), которой
+	// CreateRun метит новые прогоны. Задаётся один раз на старте, до запуска
+	// API и фоновых циклов.
+	ownerHead string
 }
 
 // New создаёт Store.
 func New(pool *pgxpool.Pool, box *secretcrypto.Box) *Store {
 	return &Store{pool: pool, box: box}
 }
+
+// SetOwnerHead задаёт идентичность головы для новых прогонов (см. ownerHead).
+func (s *Store) SetOwnerHead(id string) { s.ownerHead = id }
+
+// OwnerHead — идентичность этой головы ("" — не определена).
+func (s *Store) OwnerHead() string { return s.ownerHead }
 
 // Pool отдаёт нижележащий пул (нужен фоновым компонентам под свои запросы).
 func (s *Store) Pool() *pgxpool.Pool { return s.pool }

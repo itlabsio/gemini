@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -143,6 +144,8 @@ func runServe() {
 		kc = nil
 	} else if err := kc.ResolveOwner(ctx, cfg.JobOwnerDeployment); err != nil {
 		log.Printf("gemini: %v — job'ы без ownerReference/imagePullSecrets", err)
+	} else {
+		st.SetOwnerHead(kc.OwnerUID())
 	}
 
 	nt := notify.New(cfg.Notify)
@@ -178,14 +181,26 @@ func runServe() {
 		},
 	})
 
-	// Фоновые компоненты
-	go op.Watch(ctx)
-	go op.RunTemplateReconciler(ctx) // CronJob-шаблоны + секреты кред (dump/restore)
-	if cfg.IsTarget() {
-		go op.RunPoller(ctx)
+	// Фоновые компоненты. API обслуживают все реплики, а циклы, которые меняют
+	// прогоны и объекты в кластере, — только лидер (k8s Lease): две реплики
+	// дважды «усыновляли» бы один scheduled-Job и дублировали webhook'и.
+	background := func(ctx context.Context) {
+		var wg sync.WaitGroup
+		spawn := func(f func(context.Context)) { wg.Go(func() { f(ctx) }) }
+		spawn(op.Watch)
+		spawn(op.RunTemplateReconciler) // CronJob-шаблоны + секреты кред (dump/restore)
+		if cfg.IsTarget() {
+			spawn(op.RunPoller)
+		}
+		if cfg.IsSource() {
+			spawn(op.RunSignatureBackfill)
+		}
+		wg.Wait()
 	}
-	if cfg.IsSource() {
-		go op.RunSignatureBackfill(ctx)
+	if kc != nil {
+		go kc.RunAsLeader(ctx, leaseName(cfg), leaseIdentity(), background)
+	} else {
+		go background(ctx) // локальный запуск без кластера — выбирать лидера не среди кого
 	}
 
 	srv := &http.Server{
@@ -218,4 +233,21 @@ func runServe() {
 	}
 	cancel()
 	log.Println("gemini: bye")
+}
+
+// leaseName — имя Lease для выбора лидера: своё у каждого релиза (Source и
+// Target живут в одном namespace), общее у всех реплик релиза.
+func leaseName(cfg *config.Config) string {
+	if cfg.JobOwnerDeployment != "" {
+		return cfg.JobOwnerDeployment + "-leader"
+	}
+	return "gemini-" + string(cfg.Role) + "-leader"
+}
+
+// leaseIdentity — кто держит аренду: имя пода (в k8s hostname = имя пода).
+func leaseIdentity() string {
+	if h, err := os.Hostname(); err == nil && h != "" {
+		return h
+	}
+	return fmt.Sprintf("gemini-%d", os.Getpid())
 }

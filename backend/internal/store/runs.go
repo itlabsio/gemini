@@ -13,13 +13,13 @@ import (
 )
 
 const runCols = `id, database_id, kind, trigger, status, k8s_job_name, s3_object_key,
-	checksum, event_key, started_at, finished_at, error_message, initiated_by, created_at`
+	checksum, event_key, started_at, finished_at, error_message, initiated_by, owner_head, created_at`
 
 func scanRun(row pgx.Row) (*model.BackupRun, error) {
 	var r model.BackupRun
 	err := row.Scan(&r.ID, &r.DatabaseID, &r.Kind, &r.Trigger, &r.Status, &r.K8sJobName,
 		&r.S3ObjectKey, &r.Checksum, &r.EventKey, &r.StartedAt, &r.FinishedAt,
-		&r.ErrorMessage, &r.InitiatedBy, &r.CreatedAt)
+		&r.ErrorMessage, &r.InitiatedBy, &r.OwnerHead, &r.CreatedAt)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -168,16 +168,16 @@ type NewRunInput struct {
 	InitiatedBy string
 }
 
-// CreateRun вставляет прогон в статусе pending.
+// CreateRun вставляет прогон в статусе pending от имени этой головы (owner_head).
 // Возвращает ErrConflict, если уже есть активный прогон (частичный unique index)
 // или event_key уже обработан (идемпотентность webhook/poll).
 func (s *Store) CreateRun(ctx context.Context, in NewRunInput) (*model.BackupRun, error) {
 	r, err := scanRun(s.pool.QueryRow(ctx, `
 		INSERT INTO backup_runs
-			(database_id, kind, trigger, status, s3_object_key, checksum, event_key, initiated_by)
-		VALUES ($1,$2,$3,'pending',$4,$5,$6,$7)
+			(database_id, kind, trigger, status, s3_object_key, checksum, event_key, initiated_by, owner_head)
+		VALUES ($1,$2,$3,'pending',$4,$5,$6,$7,$8)
 		RETURNING `+runCols,
-		in.DatabaseID, in.Kind, in.Trigger, in.S3ObjectKey, in.Checksum, in.EventKey, in.InitiatedBy))
+		in.DatabaseID, in.Kind, in.Trigger, in.S3ObjectKey, in.Checksum, in.EventKey, in.InitiatedBy, s.ownerHead))
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return nil, ErrConflict
