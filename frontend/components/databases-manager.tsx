@@ -200,7 +200,14 @@ export function DatabasesManager({
     });
 
   return (
-    <section className="flex flex-col gap-3">
+    <section
+      className={cn(
+        "flex flex-col gap-3",
+        // Колонка пользователя restore не влезает в max-w-6xl — выходим за контейнер
+        // симметрично, но не шире вьюпорта.
+        perDB && "w-[min(88rem,calc(100vw-2rem))] self-center",
+      )}
+    >
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Базы данных</h2>
         {canEdit && (
