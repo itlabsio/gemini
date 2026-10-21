@@ -175,3 +175,42 @@ func TestOwns(t *testing.T) {
 		}
 	}
 }
+
+// in_place_per_db: секрет кред базы подключается вторым envFrom с префиксом
+// RESTORE_ — PGUSER/PGPASSWORD инстанса он не перекрывает.
+func TestReconcileCronJobDBCredsSecret(t *testing.T) {
+	const ns = "gemini"
+	for _, tc := range []struct {
+		name    string
+		dbCreds string
+		want    int
+	}{
+		{"instance creds only", "", 1},
+		{"with db creds", DBCredsSecretName("db1"), 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cs := fake.NewSimpleClientset()
+			c := &Client{cs: cs, namespace: ns}
+			if err := c.ReconcileCronJob(context.Background(), CronSpec{
+				Kind: "restore", DatabaseID: "db1",
+				CredsSecretName: CredsSecretName("inst1"), DBCredsSecretName: tc.dbCreds,
+			}); err != nil {
+				t.Fatalf("ReconcileCronJob: %v", err)
+			}
+			cj, err := cs.BatchV1().CronJobs(ns).Get(context.Background(), CronJobName("restore", "db1"), metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("get cronjob: %v", err)
+			}
+			ef := cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].EnvFrom
+			if len(ef) != tc.want {
+				t.Fatalf("envFrom = %+v, want %d entries", ef, tc.want)
+			}
+			if ef[0].Prefix != "" || ef[0].SecretRef.Name != CredsSecretName("inst1") {
+				t.Errorf("envFrom[0] = %+v, want unprefixed instance secret", ef[0])
+			}
+			if tc.want == 2 && (ef[1].Prefix != DBCredsEnvPrefix || ef[1].SecretRef.Name != tc.dbCreds) {
+				t.Errorf("envFrom[1] = %+v, want %s with prefix %s", ef[1], tc.dbCreds, DBCredsEnvPrefix)
+			}
+		})
+	}
+}

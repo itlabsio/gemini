@@ -22,6 +22,11 @@ import (
 type Env struct {
 	PGHost, PGPort, PGUser, PGPassword, PGSSLMode, PGDatabase string
 
+	// RestorePGUser / RestorePGPassword — пользователь базы, под которым
+	// pg_restore накатывает дамп в режиме in_place_per_db (секрет кред базы,
+	// envFrom с префиксом RESTORE_). Остальные шаги — под PGUser.
+	RestorePGUser, RestorePGPassword string
+
 	S3ObjectKey, S3Prefix string
 
 	// S3Buckets — все включённые бакеты (S3_BUCKETS из секрета кред): dump льёт
@@ -32,7 +37,7 @@ type Env struct {
 
 	TargetDBName   string
 	TargetDBOwner  string // роль-владелец восстановленной базы (пусто → владелец = restorer)
-	RestoreMode    string // "recreate" (RENAME→CREATE→DROP) | "in_place" (--clean поверх)
+	RestoreMode    string // "recreate" (RENAME→CREATE→DROP) | "in_place" / "in_place_per_db" (--clean поверх)
 	ExpectedSHA256 string
 	// Extensions — расширения, которые restore создаёт до наката: голова Target
 	// передаёт их EXTENSIONS'ом, сверив подпись Source над <key>.extensions.
@@ -49,12 +54,16 @@ type Env struct {
 
 func readEnv() (Env, error) {
 	e := Env{
-		PGHost:         os.Getenv("PGHOST"),
-		PGPort:         orDefault(os.Getenv("PGPORT"), "5432"),
-		PGUser:         os.Getenv("PGUSER"),
-		PGPassword:     os.Getenv("PGPASSWORD"),
-		PGSSLMode:      orDefault(os.Getenv("PGSSLMODE"), "require"),
-		PGDatabase:     os.Getenv("PGDATABASE"),
+		PGHost:     os.Getenv("PGHOST"),
+		PGPort:     orDefault(os.Getenv("PGPORT"), "5432"),
+		PGUser:     os.Getenv("PGUSER"),
+		PGPassword: os.Getenv("PGPASSWORD"),
+		PGSSLMode:  orDefault(os.Getenv("PGSSLMODE"), "require"),
+		PGDatabase: os.Getenv("PGDATABASE"),
+
+		RestorePGUser:     os.Getenv("RESTORE_PGUSER"),
+		RestorePGPassword: os.Getenv("RESTORE_PGPASSWORD"),
+
 		S3ObjectKey:    os.Getenv("S3_OBJECT_KEY"),
 		S3Prefix:       strings.Trim(os.Getenv("S3_PREFIX"), "/"),
 		S3BucketID:     os.Getenv("S3_BUCKET_ID"),
@@ -99,11 +108,17 @@ func (e Env) restoreOrder() []storage.JobBucket {
 
 // pgEnv возвращает окружение для дочерних psql/pg_dump без утечки в родительский лог.
 func (e Env) pgEnv(database string) []string {
-	env := append(os.Environ(),
+	return e.pgEnvAs(database, e.PGUser, e.PGPassword)
+}
+
+// pgEnvAs — pgEnv под другим пользователем (pg_restore в in_place_per_db).
+// RESTORE_PG* из окружения Job'а дочерним процессам не передаём: им незачем.
+func (e Env) pgEnvAs(database, user, password string) []string {
+	env := append(withoutRestoreCreds(os.Environ()),
 		"PGHOST="+e.PGHost,
 		"PGPORT="+e.PGPort,
-		"PGUSER="+e.PGUser,
-		"PGPASSWORD="+e.PGPassword,
+		"PGUSER="+user,
+		"PGPASSWORD="+password,
 		"PGSSLMODE="+e.PGSSLMode,
 		"PGCONNECT_TIMEOUT=15",
 	)
@@ -120,6 +135,16 @@ func (e Env) pgEnv(database string) []string {
 		env = append(env, "PGDATABASE="+database)
 	}
 	return env
+}
+
+func withoutRestoreCreds(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, "RESTORE_PG") {
+			out = append(out, kv)
+		}
+	}
+	return out
 }
 
 func sha256File(path string) (string, error) {

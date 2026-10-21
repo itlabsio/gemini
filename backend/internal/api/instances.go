@@ -132,9 +132,10 @@ func (req instanceRequest) validate(defaultRole model.InstanceRole) (store.Insta
 	if in.SSLMode != "" && !slices.Contains(validSSLModes, in.SSLMode) {
 		return in, "ssl_mode must be one of: " + strings.Join(validSSLModes, ", ")
 	}
-	if in.RestoreMode != "" &&
-		in.RestoreMode != model.RestoreRecreate && in.RestoreMode != model.RestoreInPlace {
-		return in, "restore_mode must be 'recreate' or 'in_place'"
+	switch in.RestoreMode {
+	case "", model.RestoreRecreate, model.RestoreInPlace, model.RestoreInPlacePerDB:
+	default:
+		return in, "restore_mode must be 'recreate', 'in_place' or 'in_place_per_db'"
 	}
 	// Кастомный CA имеет смысл только когда libpq действительно проверяет цепочку.
 	// При остальных режимах он просто не применяется — не храним мусор.
@@ -308,6 +309,7 @@ func (s *Server) discoverInstance(w http.ResponseWriter, r *http.Request) {
 
 // listInstanceRoles (target, admin) подключается к инстансу и отдаёт имена ролей
 // кластера — кандидаты на владельца восстановленной базы в UI сопоставления.
+// ?login=true — только роли с LOGIN (пользователь restore базы, in_place_per_db).
 func (s *Server) listInstanceRoles(w http.ResponseWriter, r *http.Request) {
 	inst, err := s.d.Store.GetInstance(r.Context(), mux.Vars(r)["id"])
 	if err != nil {
@@ -319,7 +321,7 @@ func (s *Server) listInstanceRoles(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "resolve credentials: "+err.Error())
 		return
 	}
-	roles, err := discovery.ListRoles(r.Context(), *target)
+	roles, err := discovery.ListRoles(r.Context(), *target, r.URL.Query().Get("login") == "true")
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "list roles failed: "+err.Error())
 		return

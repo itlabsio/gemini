@@ -2,7 +2,7 @@ export type HeadRole = "source" | "target";
 export type AuthType = "plain" | "vault";
 export type InstanceRole = "source" | "target";
 export type StorageType = "ephemeral" | "emptydir";
-export type RestoreMode = "recreate" | "in_place";
+export type RestoreMode = "recreate" | "in_place" | "in_place_per_db";
 
 export interface Instance {
   id: string;
@@ -37,6 +37,8 @@ export interface Database {
   schedule_cron?: string;
   storage_type?: "" | StorageType;
   storage_size?: string;
+  /** Пользователь restore базы (режим инстанса in_place_per_db); пароль не отдаётся. */
+  restore_username?: string;
   external_id: string;
   present: boolean;
   created_at: string;

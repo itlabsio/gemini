@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -31,6 +32,13 @@ import (
 //	           копии не остаётся. Для MDB: базу, роль-владельца и расширения
 //	           заводят через консоль Yandex Cloud, restorer'у дают членство в
 //	           роли-владельце, CREATE/ALTER DATABASE не нужны.
+//	in_place_per_db — как in_place, но pg_restore подключается пользователем
+//	           базы (RESTORE_PGUSER/RESTORE_PGPASSWORD), а не restorer'ом. Для
+//	           кластеров, где владельца базы restorer'у не выдать (Selectel: у
+//	           роли нет ADMIN OPTION ни у кого, кроме системного суперюзера).
+//	           Обрыв сессий — по-прежнему под restorer'ом. Расширения не
+//	           создаются вовсе (в таких кластерах их включают в панели):
+//	           проверяется лишь, что все нужные уже есть, — до обрыва сессий.
 //
 // Владелец (TARGET_DB_OWNER — заранее созданная роль) прокидывается в
 // `pg_restore --role=<owner>` (SET ROLE после подключения). ALTER DATABASE OWNER
@@ -108,8 +116,16 @@ func runRestore(ctx context.Context, e Env) error {
 		return restoreRecreate(ctx, e, target, dumpPath)
 	case "in_place":
 		return restoreInPlace(ctx, e, target, dumpPath)
+	case "in_place_per_db":
+		// Без своего пользователя не откатываемся на restorer'а: режим выбран
+		// как раз потому, что под ним накат не работает.
+		if e.RestorePGUser == "" || e.RestorePGPassword == "" {
+			return fmt.Errorf("restore: RESTORE_MODE=in_place_per_db requires RESTORE_PGUSER and RESTORE_PGPASSWORD " +
+				"(restore user of the target database is not set)")
+		}
+		return restoreInPlace(ctx, e, target, dumpPath)
 	default:
-		return fmt.Errorf("restore: unknown RESTORE_MODE %q (want recreate|in_place)", e.RestoreMode)
+		return fmt.Errorf("restore: unknown RESTORE_MODE %q (want recreate|in_place|in_place_per_db)", e.RestoreMode)
 	}
 }
 
@@ -190,16 +206,24 @@ func restoreRecreate(ctx context.Context, e Env, target, dumpPath string) error 
 // restoreInPlace: pg_restore --clean --if-exists прямо в существующую базу.
 // Сессии обрываем, подключаясь к самой базе — базы postgres в пуле MDB нет.
 func restoreInPlace(ctx context.Context, e Env, target, dumpPath string) error {
+	perDB := e.RestoreMode == "in_place_per_db"
+	if perDB {
+		if err := checkExtensions(ctx, e, target); err != nil {
+			return fmt.Errorf("check extensions in %s: %w", target, err)
+		}
+	}
 	if err := terminateBackends(ctx, e, target, target); err != nil {
 		return fmt.Errorf("terminate backends: %w", err)
 	}
-	if err := ensureExtensions(ctx, e, target); err != nil {
-		return fmt.Errorf("ensure extensions in %s: %w", target, err)
+	if !perDB {
+		if err := ensureExtensions(ctx, e, target); err != nil {
+			return fmt.Errorf("ensure extensions in %s: %w", target, err)
+		}
 	}
 	if err := pgRestore(ctx, e, target, dumpPath, true); err != nil {
 		return fmt.Errorf("restore into %s: %w", target, err)
 	}
-	log.Printf("restore: done (in_place)")
+	log.Printf("restore: done (%s)", e.RestoreMode)
 	return nil
 }
 
@@ -223,6 +247,42 @@ func ensureExtensions(ctx context.Context, e Env, database string) error {
 		log.Printf("restore: ensured %d extension(s): %s", len(e.Extensions), strings.Join(e.Extensions, ", "))
 	}
 	return nil
+}
+
+// checkExtensions (in_place_per_db) проверяет, что все расширения из EXTENSIONS
+// уже установлены в database: создать их здесь некому — ни restorer'у, ни
+// пользователю базы CREATE EXTENSION в таких кластерах не дают, включаются они
+// в панели провайдера. Ничего не меняет, поэтому идёт до обрыва сессий.
+func checkExtensions(ctx context.Context, e Env, database string) error {
+	if len(e.Extensions) == 0 {
+		return nil
+	}
+	cmd := exec.CommandContext(ctx, pgTool("psql", e.pgMajor), "--set", "ON_ERROR_STOP=1",
+		"--no-psqlrc", "--tuples-only", "--no-align", "--quiet",
+		"--command", `SELECT extname FROM pg_extension;`)
+	cmd.Env = e.pgEnv(database)
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return err
+	}
+	if missing := missingExtensions(e.Extensions, strings.Fields(string(out))); len(missing) > 0 {
+		return fmt.Errorf("extension(s) %s are not installed — in_place_per_db does not create extensions, "+
+			"enable them in the provider's console first", strings.Join(missing, ", "))
+	}
+	log.Printf("restore: all %d extension(s) present: %s", len(e.Extensions), strings.Join(e.Extensions, ", "))
+	return nil
+}
+
+// missingExtensions — имена из want, которых нет среди installed.
+func missingExtensions(want, installed []string) []string {
+	var out []string
+	for _, n := range want {
+		if !slices.Contains(installed, n) {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // databaseExists проверяет наличие базы через служебную postgres.
@@ -261,6 +321,9 @@ func terminateBackends(ctx context.Context, e Env, connectDB, targetDB string) e
 //     dump'е + --no-owner/-x), это подстраховка.
 //   - clean → --clean --if-exists: снести существующие объекты перед созданием
 //     (in_place). Для recreate база пустая — не нужно.
+//   - in_place_per_db: подключение под RESTORE_PGUSER (restoreConn). --role
+//     при этом остаётся: SET ROLE на себя разрешён всегда, на роль, в которой
+//     пользователь состоит, — тоже.
 //   - --use-list: если архив снят pg_dump <17 (без --exclude-extension), из TOC
 //     вырезаются EXTENSION-записи — их DROP под MDB in_place падает "must be
 //     owner of extension". Нужные расширения уже создал ensureExtensions.
@@ -288,10 +351,20 @@ func pgRestore(ctx context.Context, e Env, database, dumpPath string, clean bool
 	args = append(args, dumpPath)
 
 	cmd := exec.CommandContext(ctx, pgTool("pg_restore", e.pgMajor), args...)
-	cmd.Env = e.pgEnv(database)
+	cmd.Env = e.restoreEnv(database)
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stderr
 	return cmd.Run()
+}
+
+// restoreEnv — окружение pg_restore: пользователь базы в in_place_per_db,
+// иначе restorer.
+func (e Env) restoreEnv(database string) []string {
+	if e.RestoreMode == "in_place_per_db" {
+		log.Printf("restore: pg_restore connects as %s (in_place_per_db)", e.RestorePGUser)
+		return e.pgEnvAs(database, e.RestorePGUser, e.RestorePGPassword)
+	}
+	return e.pgEnv(database)
 }
 
 func psqlExec(ctx context.Context, e Env, database, sql string) error {

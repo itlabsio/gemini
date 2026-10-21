@@ -112,9 +112,12 @@ export const discoverInstance = (id: string) =>
     `/api/instances/${id}/discover`,
     { method: "POST" },
   );
-/** Имена ролей target-кластера — кандидаты на владельца восстановленной базы. */
-export const listInstanceRoles = (id: string) =>
-  apiFetch<string[]>(`/api/instances/${id}/roles`);
+/**
+ * Имена ролей target-кластера — кандидаты на владельца восстановленной базы.
+ * loginOnly — только роли с LOGIN (пользователь restore базы, in_place_per_db).
+ */
+export const listInstanceRoles = (id: string, loginOnly = false) =>
+  apiFetch<string[]>(`/api/instances/${id}/roles${loginOnly ? "?login=true" : ""}`);
 export const patchDatabase = (
   id: string,
   patch: {
@@ -122,6 +125,9 @@ export const patchDatabase = (
     schedule_cron?: string;
     storage_type?: string;
     storage_size?: string;
+    restore_username?: string;
+    /** Пусто при заданном restore_username — оставить сохранённый */
+    restore_password?: string;
   }
 ) => apiFetch<Database>(`/api/databases/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
 

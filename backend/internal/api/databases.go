@@ -28,9 +28,15 @@ type databasePatchRequest struct {
 	ScheduleCron *string `json:"schedule_cron"`
 	StorageType  *string `json:"storage_type"`
 	StorageSize  *string `json:"storage_size"`
+	// RestoreUsername / RestorePassword — креды restore базы (только Target,
+	// режим инстанса in_place_per_db). Пустой username удаляет креды; пустой
+	// пароль при заданном username — «не менять сохранённый».
+	RestoreUsername *string `json:"restore_username"`
+	RestorePassword *string `json:"restore_password"`
 }
 
-// patchDatabase меняет enabled / schedule_cron / storage_*. schedule_cron — только на Source.
+// patchDatabase меняет enabled / schedule_cron / storage_* / restore-креды.
+// schedule_cron — только на Source, restore-креды — только на Target.
 func (s *Server) patchDatabase(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 	var req databasePatchRequest
@@ -59,6 +65,40 @@ func (s *Server) patchDatabase(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.RestorePassword != nil && req.RestoreUsername == nil {
+		writeError(w, http.StatusBadRequest, "restore_password requires restore_username")
+		return
+	}
+	if req.RestoreUsername != nil {
+		if !s.d.Cfg.IsTarget() {
+			writeError(w, http.StatusBadRequest, "restore credentials are used only on target head")
+			return
+		}
+		user := strings.TrimSpace(*req.RestoreUsername)
+		pass := ""
+		if req.RestorePassword != nil {
+			pass = *req.RestorePassword
+		}
+		// Иначе для несуществующей базы INSERT упал бы на FK как 500.
+		if _, err := s.d.Store.GetDatabase(r.Context(), id); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		var err error
+		switch {
+		case user == "":
+			err = s.d.Store.DeleteDatabaseCredentials(r.Context(), id)
+		case !validRoleName(user):
+			writeError(w, http.StatusBadRequest, "restore_username is not a valid PostgreSQL role name")
+			return
+		default:
+			err = s.d.Store.SetDatabaseCredentials(r.Context(), id, user, pass)
+		}
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
 	db, err := s.d.Store.PatchDatabase(r.Context(), id, store.DatabasePatch{
 		Enabled:      req.Enabled,
 		ScheduleCron: req.ScheduleCron,
@@ -69,7 +109,9 @@ func (s *Server) patchDatabase(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	s.audit(r, "database.patch", id, map[string]any{"enabled": req.Enabled, "schedule_cron": req.ScheduleCron})
+	// Пароль в аудит не пишем — только факт его смены.
+	s.audit(r, "database.patch", id, map[string]any{"enabled": req.Enabled, "schedule_cron": req.ScheduleCron,
+		"restore_username": req.RestoreUsername, "restore_password_changed": req.RestorePassword != nil && *req.RestorePassword != ""})
 	writeJSON(w, http.StatusOK, db)
 }
 
@@ -147,6 +189,9 @@ func writeRunStartError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusServiceUnavailable, "kubernetes client is not configured")
 	case errors.Is(err, operator.ErrDatabaseDisabled):
 		writeError(w, http.StatusConflict, "restore is disabled for this target database")
+	case errors.Is(err, operator.ErrNoRestoreCredentials):
+		writeError(w, http.StatusConflict,
+			"restore user is not set for this target database — instance is in in_place_per_db mode, set it on the instance page")
 	case errors.Is(err, storage.ErrNoBuckets):
 		writeError(w, http.StatusServiceUnavailable, "no S3 buckets configured")
 	default:

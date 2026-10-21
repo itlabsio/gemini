@@ -8,6 +8,7 @@ import {
   deleteInstance,
   discoverInstance,
   listActiveRuns,
+  listInstanceRoles,
   patchDatabase,
   runDatabase,
   updateInstance,
@@ -95,6 +96,8 @@ export async function patchDatabaseAction(
     schedule_cron?: string;
     storage_type?: string;
     storage_size?: string;
+    restore_username?: string;
+    restore_password?: string;
   }
 ): Promise<Result> {
   try {
@@ -103,6 +106,18 @@ export async function patchDatabaseAction(
     return { ok: true };
   } catch (e) {
     return toResult(e);
+  }
+}
+
+/** Роли с LOGIN на инстансе — кандидаты в пользователи restore базы. */
+export async function loadLoginRolesAction(
+  instanceId: string,
+): Promise<{ ok: true; roles: string[] } | { ok: false; error: string }> {
+  try {
+    return { ok: true, roles: await listInstanceRoles(instanceId, true) };
+  } catch (e) {
+    const r = toResult(e);
+    return { ok: false, error: r.ok ? "неизвестная ошибка" : r.error };
   }
 }
 

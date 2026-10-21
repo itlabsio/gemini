@@ -101,6 +101,16 @@ export default async function InstanceDetailPage({ params }: Props) {
               label="База discovery"
               value={instance.discovery_db || "postgres"}
             />
+            {instance.role === "target" && (
+              <Detail
+                label="Стратегия restore"
+                value={
+                  instance.restore_mode === "in_place_per_db"
+                    ? "in_place · пользователь на базу"
+                    : (instance.restore_mode ?? "recreate")
+                }
+              />
+            )}
             <Detail
               label="PostgreSQL"
               value={fmtPgVersion(instance.server_version_num) ?? "после discovery"}
@@ -145,6 +155,7 @@ export default async function InstanceDetailPage({ params }: Props) {
         initialActiveRuns={activeRuns}
         defaultStorageSize={settings?.default_storage_size ?? ""}
         headRole={me.head_role}
+        restoreMode={instance.restore_mode}
         canEdit={me.role === "admin"}
         canRun={me.role === "admin" || me.role === "operator"}
       />

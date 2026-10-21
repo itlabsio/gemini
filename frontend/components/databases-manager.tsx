@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Pause, Play, RefreshCw, ScrollText } from "lucide-react";
-import type { BackupRun, Database } from "@/lib/types";
+import type { BackupRun, Database, RestoreMode } from "@/lib/types";
 import {
   activeRunsAction,
   cancelRunAction,
   discoverAction,
+  loadLoginRolesAction,
   patchDatabaseAction,
   runDatabaseAction,
 } from "@/app/instances/actions";
@@ -53,9 +54,14 @@ interface Props {
   initialActiveRuns: BackupRun[];
   defaultStorageSize: string;
   headRole: "source" | "target";
+  /** Стратегия restore инстанса (только target). */
+  restoreMode?: RestoreMode;
   canEdit: boolean;
   canRun: boolean;
 }
+
+/** Роли с LOGIN для выбора пользователя restore: null — ещё грузятся. */
+type LoginRoles = string[] | "error" | null;
 
 type ActionResult = { ok: boolean; error?: string };
 
@@ -75,6 +81,7 @@ export function DatabasesManager({
   initialActiveRuns,
   defaultStorageSize,
   headRole,
+  restoreMode,
   canEdit,
   canRun,
 }: Props) {
@@ -83,6 +90,20 @@ export function DatabasesManager({
 
   // На target базы — цели восстановления, а не бэкапа.
   const isTarget = headRole === "target";
+  // in_place_per_db: у каждой базы свой пользователь restore (обязателен).
+  const perDB = isTarget && restoreMode === "in_place_per_db";
+
+  const [loginRoles, setLoginRoles] = useState<LoginRoles>(null);
+  useEffect(() => {
+    if (!perDB || !canEdit) return;
+    let alive = true;
+    loadLoginRolesAction(instanceId).then((res) => {
+      if (alive) setLoginRoles(res.ok ? res.roles : "error");
+    });
+    return () => {
+      alive = false;
+    };
+  }, [perDB, canEdit, instanceId]);
   const opDone = isTarget ? "Восстановление завершено" : "Бэкап завершён";
   const opDonePlural = isTarget ? "Восстановлений завершено" : "Бэкапов завершено";
 
@@ -212,6 +233,7 @@ export function DatabasesManager({
                 <TableHead>База</TableHead>
                 <TableHead>{isTarget ? "Восстановление" : "Бэкап"}</TableHead>
                 {headRole === "source" && <TableHead>Расписание (cron)</TableHead>}
+                {perDB && <TableHead>Пользователь restore</TableHead>}
                 <TableHead>Хранилище дампа</TableHead>
                 <TableHead className="text-center">Журнал</TableHead>
                 <TableHead className="text-right">Статус / запуск</TableHead>
@@ -224,6 +246,8 @@ export function DatabasesManager({
                   db={db}
                   instanceId={instanceId}
                   headRole={headRole}
+                  perDB={perDB}
+                  loginRoles={loginRoles}
                   canEdit={canEdit}
                   canRun={canRun}
                   disabled={pending}
@@ -245,6 +269,8 @@ function Row({
   db,
   instanceId,
   headRole,
+  perDB,
+  loginRoles,
   canEdit,
   canRun,
   disabled,
@@ -256,6 +282,8 @@ function Row({
   db: Database;
   instanceId: string;
   headRole: "source" | "target";
+  perDB: boolean;
+  loginRoles: LoginRoles;
   canEdit: boolean;
   canRun: boolean;
   disabled: boolean;
@@ -273,6 +301,9 @@ function Row({
     stType !== (db.storage_type ?? "") || stSize !== (db.storage_size ?? "");
 
   const running = Boolean(activeRun);
+  // Без своего пользователя restore в in_place_per_db не запустится — бэкенд
+  // откажет, поэтому и кнопку не показываем.
+  const missingRestoreUser = perDB && !db.restore_username;
   const sizeErr = bytesQuantityError(stSize, { min: MIN_STORAGE_SIZE });
 
   // На Source у каждой базы есть CronJob; он suspended, если база выключена
@@ -341,6 +372,19 @@ function Row({
               </Button>
             )}
           </div>
+        </TableCell>
+      )}
+
+      {perDB && (
+        <TableCell>
+          <RestoreUserCell
+            db={db}
+            instanceId={instanceId}
+            loginRoles={loginRoles}
+            canEdit={canEdit}
+            disabled={disabled}
+            run={run}
+          />
         </TableCell>
       )}
 
@@ -424,6 +468,15 @@ function Row({
             />
           ) : running ? (
             <StatusBadge status={activeRun?.status} />
+          ) : canRun && db.enabled && missingRestoreUser ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="warning">нет пользователя</Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                Инстанс в режиме «пользователь на базу» — задайте пользователя restore
+              </TooltipContent>
+            </Tooltip>
           ) : canRun && db.enabled ? (
             <Button
               size="sm"
@@ -455,5 +508,102 @@ function Row({
         </div>
       </TableCell>
     </TableRow>
+  );
+}
+
+/**
+ * Пользователь restore базы (in_place_per_db): роль с LOGIN из списка кластера
+ * (или вручную, если список не прочитался) и пароль. Пароль бэкенд не отдаёт:
+ * пустое поле при сохранённом пользователе — «не менять».
+ */
+function RestoreUserCell({
+  db,
+  instanceId,
+  loginRoles,
+  canEdit,
+  disabled,
+  run,
+}: {
+  db: Database;
+  instanceId: string;
+  loginRoles: LoginRoles;
+  canEdit: boolean;
+  disabled: boolean;
+  run: (fn: () => Promise<ActionResult>, okMsg?: string) => void;
+}) {
+  const saved = db.restore_username ?? "";
+  const [user, setUser] = useState(saved);
+  const [password, setPassword] = useState("");
+
+  const userChanged = user.trim() !== saved;
+  const dirty = userChanged || password !== "";
+  // Новому пользователю (или первой настройке) пароль нужен обязательно.
+  const needPassword = user.trim() !== "" && (saved === "" || userChanged) && password === "";
+
+  if (!canEdit) {
+    return saved ? (
+      <span className="font-mono text-xs">{saved}</span>
+    ) : (
+      <Badge variant="warning">не задан</Badge>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {Array.isArray(loginRoles) ? (
+        <Select value={user} onValueChange={setUser} disabled={disabled}>
+          <SelectTrigger size="sm" className="w-40" aria-invalid={!user}>
+            <SelectValue placeholder="— роль —" />
+          </SelectTrigger>
+          <SelectContent>
+            {/* Сохранённый пользователь мог пропасть из кластера — не теряем его в списке. */}
+            {(saved && !loginRoles.includes(saved) ? [saved, ...loginRoles] : loginRoles).map(
+              (r) => (
+                <SelectItem key={r} value={r}>
+                  {r}
+                </SelectItem>
+              ),
+            )}
+          </SelectContent>
+        </Select>
+      ) : (
+        <Input
+          value={user}
+          onChange={(e) => setUser(e.target.value)}
+          disabled={disabled}
+          placeholder={loginRoles === null ? "загрузка ролей…" : "имя роли"}
+          aria-invalid={!user}
+          className="h-8 w-40 font-mono text-xs"
+        />
+      )}
+      <Input
+        type="password"
+        autoComplete="new-password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        disabled={disabled}
+        placeholder={saved && !userChanged ? "без изменений" : "пароль"}
+        aria-invalid={needPassword}
+        className="h-8 w-32 text-xs"
+      />
+      {dirty && (
+        <Button
+          size="sm"
+          onClick={() =>
+            run(async () => {
+              const res = await patchDatabaseAction(instanceId, db.id, {
+                restore_username: user.trim(),
+                restore_password: password,
+              });
+              if (res.ok) setPassword("");
+              return res;
+            }, "Пользователь restore сохранён")
+          }
+          disabled={disabled || !user.trim() || needPassword}
+        >
+          Применить
+        </Button>
+      )}
+    </div>
   );
 }

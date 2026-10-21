@@ -30,6 +30,8 @@ func writeStoreError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "not found")
 	case errors.Is(err, store.ErrConflict):
 		writeError(w, http.StatusConflict, "conflict: resource already exists or is busy")
+	case errors.Is(err, store.ErrPasswordRequired):
+		writeError(w, http.StatusBadRequest, err.Error())
 	default:
 		log.Printf("api: internal error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")

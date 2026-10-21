@@ -18,18 +18,45 @@ func CredsSecretName(instanceID string) string {
 	return "gemini-instance-creds-" + instanceID
 }
 
+// DBCredsSecretName — имя секрета кред restore одной базы (режим
+// in_place_per_db): PGUSER/PGPASSWORD, которыми pg_restore подключается вместо
+// пользователя инстанса. CronJob restore подключает его через envFrom с
+// префиксом DBCredsEnvPrefix — поверх секрета инстанса, не вместо.
+func DBCredsSecretName(databaseID string) string {
+	return "gemini-db-creds-" + databaseID
+}
+
+// DBCredsEnvPrefix — префикс переменных из секрета кред базы в контейнере
+// restore (RESTORE_PGUSER, RESTORE_PGPASSWORD).
+const DBCredsEnvPrefix = "RESTORE_"
+
+const (
+	componentCreds   = "credentials"
+	componentDBCreds = "db-credentials"
+)
+
 // UpsertCredsSecret создаёт/обновляет секрет кред инстанса.
 func (c *Client) UpsertCredsSecret(ctx context.Context, instanceID string, data map[string]string) (string, error) {
-	name := CredsSecretName(instanceID)
-	meta := objectMeta(name, c.ownerLabels("credentials", "", "", c.instanceLabel))
-	meta.Labels[LabelInstanceID] = instanceID
+	labels := c.ownerLabels(componentCreds, "", "", c.instanceLabel)
+	labels[LabelInstanceID] = instanceID
+	return c.upsertSecret(ctx, CredsSecretName(instanceID), labels, data)
+}
+
+// UpsertDBCredsSecret создаёт/обновляет секрет кред restore базы.
+func (c *Client) UpsertDBCredsSecret(ctx context.Context, databaseID string, data map[string]string) (string, error) {
+	labels := c.ownerLabels(componentDBCreds, "", databaseID, c.instanceLabel)
+	return c.upsertSecret(ctx, DBCredsSecretName(databaseID), labels, data)
+}
+
+func (c *Client) upsertSecret(ctx context.Context, name string, labels, data map[string]string) (string, error) {
+	meta := objectMeta(name, labels)
 	meta.OwnerReferences = c.ownerRefs()
 	sec := &corev1.Secret{ObjectMeta: meta, StringData: data, Type: corev1.SecretTypeOpaque}
 
 	_, err := c.cs.CoreV1().Secrets(c.namespace).Create(ctx, sec, metav1.CreateOptions{})
 	switch {
 	case err == nil:
-		log.Printf("k8s: Secret %s created (instance=%s)", name, instanceID)
+		log.Printf("k8s: Secret %s created", name)
 	case apierrors.IsAlreadyExists(err):
 		if _, err = c.cs.CoreV1().Secrets(c.namespace).Update(ctx, sec, metav1.UpdateOptions{}); err != nil {
 			return "", fmt.Errorf("update secret %s: %w", name, err)
@@ -42,7 +69,15 @@ func (c *Client) UpsertCredsSecret(ctx context.Context, instanceID string, data 
 
 // DeleteCredsSecret удаляет секрет кред инстанса — best-effort.
 func (c *Client) DeleteCredsSecret(ctx context.Context, instanceID string) error {
-	name := CredsSecretName(instanceID)
+	return c.deleteSecret(ctx, CredsSecretName(instanceID))
+}
+
+// DeleteDBCredsSecret удаляет секрет кред restore базы — best-effort.
+func (c *Client) DeleteDBCredsSecret(ctx context.Context, databaseID string) error {
+	return c.deleteSecret(ctx, DBCredsSecretName(databaseID))
+}
+
+func (c *Client) deleteSecret(ctx context.Context, name string) error {
 	err := c.cs.CoreV1().Secrets(c.namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	if apierrors.IsNotFound(err) {
 		return nil
@@ -56,8 +91,19 @@ func (c *Client) DeleteCredsSecret(ctx context.Context, instanceID string) error
 // ListManagedCredsSecrets возвращает instanceID → имя секретов кред этой головы
 // (для сверки при reconcile).
 func (c *Client) ListManagedCredsSecrets(ctx context.Context) (map[string]string, error) {
+	return c.listManagedSecrets(ctx, componentCreds, LabelInstanceID)
+}
+
+// ListManagedDBCredsSecrets возвращает databaseID → имя секретов кред restore
+// баз этой головы (для сверки при reconcile).
+func (c *Client) ListManagedDBCredsSecrets(ctx context.Context) (map[string]string, error) {
+	return c.listManagedSecrets(ctx, componentDBCreds, LabelDatabaseID)
+}
+
+// listManagedSecrets — секреты компонента этой головы, по значению лейбла key.
+func (c *Client) listManagedSecrets(ctx context.Context, component, key string) (map[string]string, error) {
 	list, err := c.cs.CoreV1().Secrets(c.namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: LabelManagedBy + "=" + ManagedByValue + "," + LabelComponent + "=credentials",
+		LabelSelector: LabelManagedBy + "=" + ManagedByValue + "," + LabelComponent + "=" + component,
 	})
 	if err != nil {
 		return nil, err
@@ -68,7 +114,7 @@ func (c *Client) ListManagedCredsSecrets(ctx context.Context) (map[string]string
 		if !c.owns(s.Labels) {
 			continue
 		}
-		if id := s.Labels[LabelInstanceID]; id != "" {
+		if id := s.Labels[key]; id != "" {
 			out[id] = s.Name
 		}
 	}

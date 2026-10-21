@@ -18,6 +18,10 @@ var ErrNotFound = errors.New("not found")
 // (например, уже есть активный прогон для базы).
 var ErrConflict = errors.New("conflict")
 
+// ErrPasswordRequired — креды задаются впервые, а пароль пустой («не менять»
+// применим только к уже сохранённым).
+var ErrPasswordRequired = errors.New("password is required")
+
 // Store держит пул и box для шифрования секретов подключений.
 type Store struct {
 	pool *pgxpool.Pool

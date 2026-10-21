@@ -2,11 +2,13 @@ package operator
 
 import (
 	"context"
+	"errors"
 	"log"
 	"math/rand/v2"
 	"time"
 
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/k8s"
+	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
 )
 
 const (
@@ -67,6 +69,7 @@ func (o *Operator) reconcileTemplates(ctx context.Context) {
 
 	wanted := map[string]bool{}          // имя CronJob'а
 	wantedInstances := map[string]bool{} // instanceID с активной базой/сопоставлением
+	wantedDBCreds := map[string]bool{}   // databaseID с секретом кред restore (in_place_per_db)
 
 	if o.cfg.IsSource() {
 		dbs, err := o.store.ListEnabledDatabases(ctx)
@@ -100,6 +103,19 @@ func (o *Operator) reconcileTemplates(ctx context.Context) {
 				}
 				wanted[k8s.CronJobName("restore", tgt.ID)] = true
 				wantedInstances[tgt.InstanceID] = true
+
+				inst, err := o.store.GetInstance(ctx, tgt.InstanceID)
+				if err != nil || restoreModeOf(inst) != model.RestoreInPlacePerDB {
+					continue
+				}
+				// Нет кредов — секрета нет; StartRestore откажет с понятной ошибкой.
+				if err := o.upsertDatabaseCreds(ctx, tgt); err != nil {
+					if !errors.Is(err, ErrNoRestoreCredentials) {
+						log.Printf("operator: upsert restore creds for %s: %v", tgt.DBName, err)
+					}
+					continue
+				}
+				wantedDBCreds[tgt.ID] = true
 			}
 		}
 	}
@@ -130,6 +146,17 @@ func (o *Operator) reconcileTemplates(ctx context.Context) {
 	for instanceID := range secrets {
 		if !wantedInstances[instanceID] {
 			_ = o.k8s.DeleteCredsSecret(ctx, instanceID)
+		}
+	}
+
+	dbSecrets, err := o.k8s.ListManagedDBCredsSecrets(ctx)
+	if err != nil {
+		log.Printf("operator: list db creds secrets: %v", err)
+		return
+	}
+	for databaseID := range dbSecrets {
+		if !wantedDBCreds[databaseID] {
+			_ = o.k8s.DeleteDBCredsSecret(ctx, databaseID)
 		}
 	}
 }

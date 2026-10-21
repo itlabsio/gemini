@@ -2,19 +2,24 @@ package store
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
 )
 
-const databaseCols = `id, instance_id, db_name, enabled, schedule_cron, storage_type,
-	storage_size, external_id, present, created_at, updated_at`
+// databaseCols ссылается на алиас d: все выборки идут FROM databases d. Пароль
+// restore сюда не попадает НИКОГДА — он читается лишь DatabaseCredentials().
+const databaseCols = `d.id, d.instance_id, d.db_name, d.enabled, d.schedule_cron, d.storage_type,
+	d.storage_size, d.external_id, d.present, d.created_at, d.updated_at,
+	COALESCE((SELECT c.username FROM database_credentials c WHERE c.database_id = d.id), '')`
 
 func scanDatabase(row pgx.Row) (*model.Database, error) {
 	var d model.Database
 	err := row.Scan(&d.ID, &d.InstanceID, &d.DBName, &d.Enabled, &d.ScheduleCron,
-		&d.StorageType, &d.StorageSize, &d.ExternalID, &d.Present, &d.CreatedAt, &d.UpdatedAt)
+		&d.StorageType, &d.StorageSize, &d.ExternalID, &d.Present, &d.CreatedAt, &d.UpdatedAt,
+		&d.RestoreUsername)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -44,7 +49,7 @@ func (s *Store) ListDatabases(ctx context.Context, instanceID string) ([]model.D
 // ListEnabledDatabases возвращает включённые базы (для scheduler).
 func (s *Store) ListEnabledDatabases(ctx context.Context) ([]model.Database, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT `+databaseCols+` FROM databases WHERE enabled AND present ORDER BY db_name`)
+		`SELECT `+databaseCols+` FROM databases d WHERE d.enabled AND d.present ORDER BY d.db_name`)
 	if err != nil {
 		return nil, err
 	}
@@ -87,13 +92,13 @@ func collectDatabases(rows pgx.Rows) ([]model.Database, error) {
 // GetDatabase возвращает одну базу.
 func (s *Store) GetDatabase(ctx context.Context, id string) (*model.Database, error) {
 	return scanDatabase(s.pool.QueryRow(ctx,
-		`SELECT `+databaseCols+` FROM databases WHERE id = $1`, id))
+		`SELECT `+databaseCols+` FROM databases d WHERE d.id = $1`, id))
 }
 
 // GetDatabaseByExternalID нужен обработчикам webhook на DR.
 func (s *Store) GetDatabaseByExternalID(ctx context.Context, externalID string) (*model.Database, error) {
 	return scanDatabase(s.pool.QueryRow(ctx,
-		`SELECT `+databaseCols+` FROM databases WHERE external_id = $1`, externalID))
+		`SELECT `+databaseCols+` FROM databases d WHERE d.external_id = $1`, externalID))
 }
 
 // SyncDiscovered синхронизирует список баз инстанса с результатом discovery:
@@ -168,8 +173,59 @@ func (s *Store) PatchDatabase(ctx context.Context, id string, p DatabasePatch) (
 		return s.GetDatabase(ctx, id)
 	}
 	// срезаем ведущую ", "
-	q := `UPDATE databases SET ` + set[2:] + ` WHERE id = $1 RETURNING ` + databaseCols
+	q := `UPDATE databases d SET ` + set[2:] + ` WHERE d.id = $1 RETURNING ` + databaseCols
 	return scanDatabase(s.pool.QueryRow(ctx, q, args...))
+}
+
+// SetDatabaseCredentials задаёт креды restore базы. Пустой password оставляет
+// сохранённый пароль (как у инстанса) — но только если креды уже есть: записи
+// без пароля не бывает.
+func (s *Store) SetDatabaseCredentials(ctx context.Context, databaseID, username, password string) error {
+	if password == "" {
+		ct, err := s.pool.Exec(ctx,
+			`UPDATE database_credentials SET username = $2 WHERE database_id = $1`, databaseID, username)
+		if err != nil {
+			return mapErr(err)
+		}
+		if ct.RowsAffected() == 0 {
+			return ErrPasswordRequired
+		}
+		return nil
+	}
+	enc, err := s.box.Encrypt(password)
+	if err != nil {
+		return fmt.Errorf("encrypt password: %w", err)
+	}
+	_, err = s.pool.Exec(ctx, `
+		INSERT INTO database_credentials (database_id, username, password_encrypted)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (database_id) DO UPDATE SET
+			username = EXCLUDED.username,
+			password_encrypted = EXCLUDED.password_encrypted`,
+		databaseID, username, enc)
+	return mapErr(err)
+}
+
+// DeleteDatabaseCredentials удаляет креды restore базы (отсутствие — не ошибка).
+func (s *Store) DeleteDatabaseCredentials(ctx context.Context, databaseID string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM database_credentials WHERE database_id = $1`, databaseID)
+	return err
+}
+
+// DatabaseCredentials достаёт и расшифровывает креды restore базы.
+// ErrNotFound — креды не заданы.
+func (s *Store) DatabaseCredentials(ctx context.Context, databaseID string) (username, password string, err error) {
+	var enc []byte
+	err = s.pool.QueryRow(ctx,
+		`SELECT username, password_encrypted FROM database_credentials WHERE database_id = $1`, databaseID,
+	).Scan(&username, &enc)
+	if err != nil {
+		return "", "", mapErr(err)
+	}
+	if password, err = s.box.Decrypt(enc); err != nil {
+		return "", "", fmt.Errorf("decrypt database %s restore password: %w", databaseID, err)
+	}
+	return username, password, nil
 }
 
 func itoa(n int) string {

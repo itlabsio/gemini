@@ -279,7 +279,7 @@ export function InstanceForm({
             {headRole === "target" && (
               <Field
                 label="Стратегия restore"
-                hint="recreate: RENAME старой базы → CREATE → накат → DROP (self-hosted, нужен суперюзер и права CREATE DATABASE). in_place: накат поверх существующей базы дампом с --clean --if-exists (Yandex MDB — базу и роль-владельца заводят через консоль)."
+                hint="recreate: RENAME старой базы → CREATE → накат → DROP (self-hosted, нужен суперюзер и права CREATE DATABASE). in_place: накат поверх существующей базы дампом с --clean --if-exists (Yandex MDB — базу и роль-владельца заводят через консоль). in_place · пользователь на базу: как in_place, но накат идёт под своим пользователем каждой базы — его обязательно задать на странице инстанса; пользователь инстанса остаётся для discovery и обрыва сессий, расширения не создаются (включите их в панели заранее). Для кластеров, где владельца базы нельзя выдать общему пользователю (Selectel)."
               >
                 <Select
                   value={restoreMode}
@@ -293,6 +293,9 @@ export function InstanceForm({
                       recreate (self-hosted)
                     </SelectItem>
                     <SelectItem value="in_place">in_place (MDB)</SelectItem>
+                    <SelectItem value="in_place_per_db">
+                      in_place · пользователь на базу (Selectel)
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </Field>

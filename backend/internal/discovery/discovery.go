@@ -174,7 +174,9 @@ func ListDatabases(ctx context.Context, t Target) (*Result, error) {
 
 // ListRoles возвращает имена ролей кластера, кроме встроенных pg_* — кандидаты
 // на владельца восстановленной базы (target-голова, поле сопоставления).
-func ListRoles(ctx context.Context, t Target) ([]string, error) {
+// loginOnly — только роли с LOGIN: кандидаты в пользователи restore базы
+// (in_place_per_db).
+func ListRoles(ctx context.Context, t Target, loginOnly bool) ([]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
@@ -190,8 +192,8 @@ func ListRoles(ctx context.Context, t Target) ([]string, error) {
 
 	rows, err := conn.Query(ctx, `
 		SELECT rolname FROM pg_roles
-		WHERE rolname NOT LIKE 'pg\_%'
-		ORDER BY rolname`)
+		WHERE rolname NOT LIKE 'pg\_%' AND (rolcanlogin OR NOT $1)
+		ORDER BY rolname`, loginOnly)
 	if err != nil {
 		return nil, fmt.Errorf("query pg_roles: %w", err)
 	}

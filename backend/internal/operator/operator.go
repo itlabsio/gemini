@@ -94,6 +94,10 @@ var ErrNoK8s = errors.New("operator: kubernetes client not configured")
 // ErrDatabaseDisabled — восстановление в целевую базу выключено на Target.
 var ErrDatabaseDisabled = errors.New("operator: target database is disabled")
 
+// ErrNoRestoreCredentials — инстанс в режиме in_place_per_db, а у целевой базы
+// не задан свой пользователь restore (он обязателен).
+var ErrNoRestoreCredentials = errors.New("operator: restore user is not set for this target database")
+
 // safely выполняет один тик фонового цикла, превращая панику в лог.
 // Фоновые горутины не должны ронять весь процесс из-за одной плохой записи в
 // БД: до появления этой обёртки невалидный storage_size в databases/app_settings
@@ -173,6 +177,21 @@ func (o *Operator) upsertInstanceCreds(ctx context.Context, inst *model.Instance
 	return err
 }
 
+// upsertDatabaseCreds обновляет секрет кред restore базы (in_place_per_db).
+// Кредов нет → ErrNoRestoreCredentials: в этом режиме свой пользователь у базы
+// обязателен, откатываться на пользователя инстанса нельзя.
+func (o *Operator) upsertDatabaseCreds(ctx context.Context, db *model.Database) error {
+	user, pass, err := o.store.DatabaseCredentials(ctx, db.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("%w (%s)", ErrNoRestoreCredentials, db.DBName)
+	}
+	if err != nil {
+		return fmt.Errorf("database %s restore credentials: %w", db.DBName, err)
+	}
+	_, err = o.k8s.UpsertDBCredsSecret(ctx, db.ID, map[string]string{"PGUSER": user, "PGPASSWORD": pass})
+	return err
+}
+
 // resolveDumpKey возвращает ключ самого свежего дампа базы в S3 (для прогонов,
 // где раннер сам сгенерировал имя объекта — scheduled).
 func (o *Operator) resolveDumpKey(ctx context.Context, db *model.Database) string {
@@ -238,6 +257,8 @@ func (o *Operator) StartDump(ctx context.Context, db *model.Database, trigger mo
 // dump: расписание из db.ScheduleCron (suspend, если пусто), коннект под саму базу.
 // restore: всегда suspend; RESTORE_MODE берётся из инстанса, TARGET_DB_OWNER
 // добавляется на запуск (он в сопоставлении, не в базе) — см. StartRestore.
+// В in_place_per_db шаблон дополнительно подключает секрет кред базы (сам
+// секрет — upsertDatabaseCreds).
 func (o *Operator) ensureCronJob(ctx context.Context, kind string, db *model.Database) error {
 	inst, err := o.store.GetInstance(ctx, db.InstanceID)
 	if err != nil {
@@ -262,6 +283,11 @@ func (o *Operator) ensureCronJob(ctx context.Context, kind string, db *model.Dat
 		env["RESTORE_MODE"] = string(restoreModeOf(inst))
 	}
 
+	dbCredsSecret := ""
+	if kind == "restore" && restoreModeOf(inst) == model.RestoreInPlacePerDB {
+		dbCredsSecret = k8s.DBCredsSecretName(db.ID)
+	}
+
 	storageType, storageSize, overrides, ttl := o.jobParams(ctx, db)
 	return o.k8s.ReconcileCronJob(ctx, k8s.CronSpec{
 		Kind:            kind,
@@ -273,11 +299,14 @@ func (o *Operator) ensureCronJob(ctx context.Context, kind string, db *model.Dat
 		Image:           o.cfg.JobImage,
 		ServiceAccount:  o.cfg.JobServiceAccount,
 		CredsSecretName: k8s.CredsSecretName(inst.ID),
-		StorageType:     storageType,
-		StorageClass:    o.cfg.JobStorageClass,
-		WorkDirSize:     storageSize,
-		Overrides:       overrides,
-		Env:             env,
+
+		DBCredsSecretName: dbCredsSecret,
+
+		StorageType:  storageType,
+		StorageClass: o.cfg.JobStorageClass,
+		WorkDirSize:  storageSize,
+		Overrides:    overrides,
+		Env:          env,
 
 		TTLSecondsAfterFinished: ttl,
 	})
@@ -286,8 +315,9 @@ func (o *Operator) ensureCronJob(ctx context.Context, kind string, db *model.Dat
 // restoreModeOf — стратегия restore инстанса, с дефолтом на recreate
 // (старые строки до миграции 011 и любой пустой ввод).
 func restoreModeOf(inst *model.Instance) model.RestoreMode {
-	if inst.RestoreMode == model.RestoreInPlace {
-		return model.RestoreInPlace
+	switch inst.RestoreMode {
+	case model.RestoreInPlace, model.RestoreInPlacePerDB:
+		return inst.RestoreMode
 	}
 	return model.RestoreRecreate
 }
@@ -314,6 +344,11 @@ func (o *Operator) StartRestore(ctx context.Context, m *model.DatabaseMapping, s
 	}
 	if err := o.upsertInstanceCreds(ctx, inst); err != nil {
 		return nil, err
+	}
+	if restoreModeOf(inst) == model.RestoreInPlacePerDB {
+		if err := o.upsertDatabaseCreds(ctx, target); err != nil {
+			return nil, err
+		}
 	}
 	if err := o.ensureCronJob(ctx, "restore", target); err != nil {
 		return nil, err

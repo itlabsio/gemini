@@ -31,6 +31,10 @@ const (
 	RestoreRecreate RestoreMode = "recreate"
 	// RestoreInPlace — накат --clean --if-exists в существующую базу (MDB).
 	RestoreInPlace RestoreMode = "in_place"
+	// RestoreInPlacePerDB — как in_place, но pg_restore подключается своим
+	// пользователем каждой базы (Database.RestoreUsername), а не пользователем
+	// инстанса: для managed-кластеров, где владельца базы нельзя выдать restorer'у.
+	RestoreInPlacePerDB RestoreMode = "in_place_per_db"
 )
 
 // Instance — сервер PostgreSQL (managed source или self-hosted target).
@@ -107,6 +111,11 @@ type Database struct {
 	// Пустые значения → дефолты головы (JOB_STORAGE_TYPE / JOB_WORKDIR_SIZE).
 	StorageType StorageType `json:"storage_type,omitempty"`
 	StorageSize string      `json:"storage_size,omitempty"`
+
+	// RestoreUsername — пользователь, под которым pg_restore накатывает дамп в
+	// эту базу (режим инстанса in_place_per_db). Пароль наружу не отдаётся.
+	// Пусто → креды не заданы.
+	RestoreUsername string `json:"restore_username,omitempty"`
 
 	// ExternalID — стабильный идентификатор, которым Source называет базу
 	// во всех межголовых API/webhook-вызовах.

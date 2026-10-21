@@ -39,6 +39,9 @@ type CronSpec struct {
 	ImagePullPolicy  corev1.PullPolicy // пусто → IfNotPresent
 	InstanceLabel    string
 	CredsSecretName  string // стабильный секрет кред (envFrom)
+	// DBCredsSecretName — секрет кред restore базы (in_place_per_db): второй
+	// envFrom с префиксом DBCredsEnvPrefix. Пусто — не подключается.
+	DBCredsSecretName string
 	// Env — несекретные переменные (S3_PREFIX, SOURCE_DATABASE_EXTERNAL_ID, TARGET_DB_NAME, ...).
 	Env map[string]string
 
@@ -117,6 +120,14 @@ func (c *Client) ReconcileCronJob(ctx context.Context, s CronSpec) error {
 				LocalObjectReference: corev1.LocalObjectReference{Name: s.CredsSecretName},
 			},
 		}}
+	}
+	if s.DBCredsSecretName != "" {
+		envFrom = append(envFrom, corev1.EnvFromSource{
+			Prefix: DBCredsEnvPrefix,
+			SecretRef: &corev1.SecretEnvSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: s.DBCredsSecretName},
+			},
+		})
 	}
 
 	pod := corev1.PodSpec{
