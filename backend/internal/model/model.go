@@ -64,8 +64,8 @@ type Instance struct {
 	SSLMode string `json:"ssl_mode"`
 
 	// SSLRootCert — PEM кастомного корневого CA для self-hosted инстанса с
-	// собственным сертификатом. Пусто → системный trust store (Yandex Cloud CA +
-	// публичные). Применяется только при ssl_mode verify-ca/verify-full.
+	// собственным сертификатом. Пусто → системный trust store (Yandex Cloud CA,
+	// Selectel DBaaS CA + публичные). Применяется только при ssl_mode verify-ca/verify-full.
 	SSLRootCert string `json:"ssl_root_cert,omitempty"`
 
 	// DiscoveryDB — база, к которой подключается discovery для чтения pg_database.

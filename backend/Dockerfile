@@ -26,6 +26,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # с alpine (сейчас доступны 16/17/18).
 FROM alpine:3 AS final
 ADD "https://storage.yandexcloud.net/cloud-certs/CA.pem" /usr/local/share/ca-certificates/YandexCA.crt
+ADD "https://storage.dbaas.selcloud.ru/CA.pem" /usr/local/share/ca-certificates/SelectelDBaaSCA.crt
 ADD "https://storage.yandexcloud.net/itlabs-ca/devops/root.crt" /usr/local/share/ca-certificates/itlabs-devops-root.crt
 RUN apk update && \
     apk upgrade && \

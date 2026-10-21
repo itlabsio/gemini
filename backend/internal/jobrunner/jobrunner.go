@@ -124,8 +124,8 @@ func (e Env) pgEnvAs(database, user, password string) []string {
 	)
 	// verify-ca/verify-full требуют корневой CA. libpq по умолчанию ищет
 	// ~/.postgresql/root.crt (нет при readOnlyRootFilesystem). PGSSLROOTCERT=system
-	// (PG16+) переводит на системный trust store — в образе там уже есть Yandex CA
-	// и публичные CA. Явно заданный PGSSLROOTCERT (напр. через ephemeral Secret)
+	// (PG16+) переводит на системный trust store — в образе там уже есть Yandex CA,
+	// Selectel DBaaS CA и публичные CA. Явно заданный PGSSLROOTCERT (напр. через ephemeral Secret)
 	// не трогаем.
 	if os.Getenv("PGSSLROOTCERT") == "" &&
 		(e.PGSSLMode == "verify-ca" || e.PGSSLMode == "verify-full") {

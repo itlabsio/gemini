@@ -56,7 +56,7 @@ export function InstanceForm({
   const [sslMode, setSslMode] = useState(initial?.ssl_mode ?? "verify-full");
   const verifyMode = sslMode === "verify-ca" || sslMode === "verify-full";
   // Кастомный CA нужен только self-hosted инстансам со своим сертификатом; для
-  // managed Yandex хватает встроенного trust store образа.
+  // managed Yandex и Selectel хватает встроенного trust store образа.
   const [caSource, setCaSource] = useState<"builtin" | "custom">(
     initial?.ssl_root_cert ? "custom" : "builtin",
   );
@@ -190,7 +190,7 @@ export function InstanceForm({
             {verifyMode && (
               <Field
                 label="CA-сертификат"
-                hint="Чем проверять сертификат сервера. Для Yandex Managed и публичных CA — встроенный. Для self-hosted со своим CA — кастомный."
+                hint="Чем проверять сертификат сервера. Для Yandex Managed, Selectel DBaaS и публичных CA — встроенный. Для self-hosted со своим CA — кастомный."
               >
                 <Select
                   value={caSource}
@@ -201,7 +201,7 @@ export function InstanceForm({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="builtin">
-                      Встроенный (Yandex Cloud + публичные)
+                      Встроенный (Yandex Cloud, Selectel + публичные)
                     </SelectItem>
                     <SelectItem value="custom">Кастомный</SelectItem>
                   </SelectContent>
