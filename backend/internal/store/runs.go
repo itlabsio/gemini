@@ -13,13 +13,13 @@ import (
 )
 
 const runCols = `id, database_id, kind, trigger, status, k8s_job_name, s3_object_key,
-	checksum, event_key, started_at, finished_at, error_message, initiated_by, owner_head, created_at`
+	checksum, event_key, started_at, finished_at, error_message, initiated_by, owner_head, extensions_digest, created_at`
 
 func scanRun(row pgx.Row) (*model.BackupRun, error) {
 	var r model.BackupRun
 	err := row.Scan(&r.ID, &r.DatabaseID, &r.Kind, &r.Trigger, &r.Status, &r.K8sJobName,
 		&r.S3ObjectKey, &r.Checksum, &r.EventKey, &r.StartedAt, &r.FinishedAt,
-		&r.ErrorMessage, &r.InitiatedBy, &r.OwnerHead, &r.CreatedAt)
+		&r.ErrorMessage, &r.InitiatedBy, &r.OwnerHead, &r.ExtensionsDigest, &r.CreatedAt)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -243,13 +243,15 @@ func (s *Store) RunByEventKey(ctx context.Context, eventKey string) (*model.Back
 
 // RunUpdate — переход статуса прогона (используется watcher'ом).
 type RunUpdate struct {
-	Status       model.RunStatus
-	K8sJobName   *string
-	S3ObjectKey  *string
-	Checksum     *string
-	ErrorMessage *string
-	MarkStarted  bool
-	MarkFinished bool
+	Status      model.RunStatus
+	K8sJobName  *string
+	S3ObjectKey *string
+	Checksum    *string
+	// ExtensionsDigest — digest <key>.extensions, подписанный Source (см. signDump).
+	ExtensionsDigest *string
+	ErrorMessage     *string
+	MarkStarted      bool
+	MarkFinished     bool
 }
 
 // UpdateRun применяет переход статуса.
@@ -268,6 +270,9 @@ func (s *Store) UpdateRun(ctx context.Context, id string, u RunUpdate) (*model.B
 	}
 	if u.Checksum != nil {
 		add("checksum", *u.Checksum)
+	}
+	if u.ExtensionsDigest != nil {
+		add("extensions_digest", *u.ExtensionsDigest)
 	}
 	if u.ErrorMessage != nil {
 		add("error_message", *u.ErrorMessage)

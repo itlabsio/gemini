@@ -49,35 +49,57 @@ func Sign(secret, method, path, ts string, body []byte) string {
 }
 
 // artifactDomain отделяет пространство подписей артефактов в S3 от подписей
-// HTTP-запросов: одну нельзя предъявить вместо другой.
-const artifactDomain = "gemini-dump-v1"
+// HTTP-запросов: одну нельзя предъявить вместо другой. v2 покрывает и
+// <key>.extensions; v1 (только ключ + sha256) проверяется лишь для дампов,
+// подписанных до перехода, — их sidecar не доверенный.
+const (
+	artifactDomain   = "gemini-dump-v2"
+	artifactDomainV1 = "gemini-dump-v1"
+)
 
-// artifactMessage — то, что подписывается: домен ‖ ключ ‖ sha256.
-func artifactMessage(s3Key, sha256hex string) []byte {
-	return []byte(artifactDomain + "\n" + s3Key + "\n" + sha256hex)
+// artifactMessage — то, что подписывается: домен ‖ ключ ‖ sha256 ‖ digest
+// списка расширений (storage.ExtensionsDigest).
+func artifactMessage(s3Key, sha256hex, extDigest string) []byte {
+	return []byte(artifactDomain + "\n" + s3Key + "\n" + sha256hex + "\n" + extDigest)
 }
 
-// SignArtifact подписывает манифест дампа (ключ + sha256) приватным ключом Source.
+func artifactMessageV1(s3Key, sha256hex string) []byte {
+	return []byte(artifactDomainV1 + "\n" + s3Key + "\n" + sha256hex)
+}
+
+// SignArtifact подписывает манифест дампа (ключ, sha256 и digest списка
+// расширений) приватным ключом Source.
 //
-// Зачем: файл <key>.sha256 лежит в том же бакете, что и дамп, и пишется тем же
-// принципалом — он доказывает только отсутствие повреждения при передаче, но не
-// происхождение. Кто может писать в бакет, тот подменит и дамп, и его сумму, а
-// Target выполнит полученный SQL через psql. Подпись переносит доверие с ACL
-// бакета на ключ Source, приватная часть которого бакета никогда не покидает.
+// Зачем: файлы <key>.sha256 и <key>.extensions лежат в том же бакете, что и
+// дамп, и пишутся тем же принципалом — они доказывают только отсутствие
+// повреждения при передаче, но не происхождение. Кто может писать в бакет, тот
+// подменит и дамп, и его сумму, а Target выполнит полученный SQL (и CREATE
+// EXTENSION под restorer'ом). Подпись переносит доверие с ACL бакета на ключ
+// Source, приватная часть которого бакета никогда не покидает.
 //
 // Ключ Source асимметричный: одну подпись проверяют все Target'ы своим
 // запиненным публичным ключом (см. VerifyArtifact).
-func SignArtifact(priv ed25519.PrivateKey, s3Key, sha256hex string) string {
-	return base64.StdEncoding.EncodeToString(ed25519.Sign(priv, artifactMessage(s3Key, sha256hex)))
+func SignArtifact(priv ed25519.PrivateKey, s3Key, sha256hex, extDigest string) string {
+	return base64.StdEncoding.EncodeToString(ed25519.Sign(priv, artifactMessage(s3Key, sha256hex, extDigest)))
 }
 
 // VerifyArtifact сверяет подпись манифеста запиненным публичным ключом Source.
-func VerifyArtifact(pub ed25519.PublicKey, s3Key, sha256hex, sig string) bool {
+func VerifyArtifact(pub ed25519.PublicKey, s3Key, sha256hex, extDigest, sig string) bool {
+	return verify(pub, artifactMessage(s3Key, sha256hex, extDigest), sig)
+}
+
+// VerifyArtifactV1 сверяет подпись старого формата (без списка расширений).
+// Совпала — дамп подлинный, но его <key>.extensions применять нельзя.
+func VerifyArtifactV1(pub ed25519.PublicKey, s3Key, sha256hex, sig string) bool {
+	return verify(pub, artifactMessageV1(s3Key, sha256hex), sig)
+}
+
+func verify(pub ed25519.PublicKey, msg []byte, sig string) bool {
 	raw, err := base64.StdEncoding.DecodeString(sig)
 	if err != nil || len(pub) != ed25519.PublicKeySize {
 		return false
 	}
-	return ed25519.Verify(pub, artifactMessage(s3Key, sha256hex), raw)
+	return ed25519.Verify(pub, msg, raw)
 }
 
 // Client шлёт подписанные запросы второй голове с экспоненциальным backoff.

@@ -116,9 +116,9 @@ func (s *Server) runDatabase(w http.ResponseWriter, r *http.Request) {
 			newest = o
 		}
 	}
-	// Сумму берём только вместе с проверкой подписи Source: ручной запуск не
-	// делает содержимое бакета доверенным.
-	checksum, bucketID, err := s.d.Operator.VerifiedChecksum(r.Context(), newest.Key)
+	// Сумму и список расширений берём только вместе с проверкой подписи
+	// Source: ручной запуск не делает содержимое бакета доверенным.
+	v, err := s.d.Operator.VerifiedDump(r.Context(), newest.Key)
 	if err != nil {
 		writeError(w, http.StatusFailedDependency, "dump is not verifiably from Source: "+err.Error()+
 			" — убедитесь, что пара с Source активна; дампы, снятые до установления пары, "+
@@ -128,8 +128,7 @@ func (s *Server) runDatabase(w http.ResponseWriter, r *http.Request) {
 	// Ручной запуск без event_key: ключ уникален навсегда (и для failed), так
 	// что повтор того же дампа упирался бы в него. От параллельных запусков
 	// защищает backup_runs_one_active.
-	run, err := s.d.Operator.StartRestore(r.Context(), m, newest.Key, checksum, bucketID,
-		model.TriggerManual, "")
+	run, err := s.d.Operator.StartRestore(r.Context(), m, newest.Key, v, model.TriggerManual, "")
 	if err != nil {
 		writeRunStartError(w, err)
 		return

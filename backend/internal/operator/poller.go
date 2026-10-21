@@ -71,13 +71,13 @@ func (o *Operator) pollOnce(ctx context.Context) {
 		// аутентифицированному каналу, а из бакета. Поэтому применяем только то,
 		// что подписано секретом пары: иначе запись в бакет = выполнение любого
 		// SQL в Target-контуре.
-		checksum, bucketID, err := o.VerifiedChecksum(ctx, newest)
+		v, err := o.VerifiedDump(ctx, newest)
 		if err != nil {
 			log.Printf("operator: poller refused %s: %v", newest, err)
 			continue
 		}
 
-		_, err = o.StartRestore(ctx, &m, newest, checksum, bucketID, model.TriggerPollFallback, eventKey)
+		_, err = o.StartRestore(ctx, &m, newest, v, model.TriggerPollFallback, eventKey)
 		switch {
 		case err == nil:
 			log.Printf("operator: poller started restore for %s (%s)", m.SourceDBName, newest)

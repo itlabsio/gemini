@@ -34,6 +34,9 @@ type Env struct {
 	TargetDBOwner  string // роль-владелец восстановленной базы (пусто → владелец = restorer)
 	RestoreMode    string // "recreate" (RENAME→CREATE→DROP) | "in_place" (--clean поверх)
 	ExpectedSHA256 string
+	// Extensions — расширения, которые restore создаёт до наката: голова Target
+	// передаёт их EXTENSIONS'ом, сверив подпись Source над <key>.extensions.
+	Extensions []string
 
 	WorkDir string
 
@@ -42,8 +45,6 @@ type Env struct {
 	// 0 → дефолтные бинари из PATH. Env копируется по значению, поэтому достаточно
 	// выставить перед вызовом под-функций.
 	pgMajor int
-	// src — бакет, из которого restore скачал дамп (оттуда же .extensions).
-	src storage.JobBucket
 }
 
 func readEnv() (Env, error) {
@@ -63,6 +64,7 @@ func readEnv() (Env, error) {
 		ExpectedSHA256: os.Getenv("EXPECTED_SHA256"),
 		WorkDir:        orDefault(os.Getenv("WORKDIR"), "/work"),
 	}
+	e.Extensions = parseExtensionsEnv(os.Getenv("EXTENSIONS"))
 	if err := json.Unmarshal([]byte(os.Getenv("S3_BUCKETS")), &e.S3Buckets); err != nil {
 		return e, fmt.Errorf("jobrunner: bad S3_BUCKETS: %w", err)
 	}
@@ -167,4 +169,16 @@ func Run(ctx context.Context, kind string) error {
 	default:
 		return fmt.Errorf("jobrunner: unknown kind %q", kind)
 	}
+}
+
+// parseExtensionsEnv разбирает EXTENSIONS ("a,b,c"). Имена уже проверены головой;
+// фильтр здесь — на случай ручного запуска Job'а с кривым значением.
+func parseExtensionsEnv(v string) []string {
+	var out []string
+	for n := range strings.SplitSeq(v, ",") {
+		if n = strings.TrimSpace(n); storage.ValidExtName(n) {
+			out = append(out, n)
+		}
+	}
+	return out
 }

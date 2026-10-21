@@ -238,6 +238,10 @@ type BackupRun struct {
 	// OwnerHead — UID Deployment'а головы, создавшей прогон ("" — до миграции 017).
 	OwnerHead string `json:"-"`
 
+	// ExtensionsDigest — digest <key>.extensions, который Source подписал с
+	// дампом ("sha256:<hex>" | "none"; "" — ещё не вычислен). Только dump на Source.
+	ExtensionsDigest string `json:"-"`
+
 	// PeerStatuses — исход применения этого дампа каждым Target-контуром
 	// (Source заполняет из обратных webhook'ов restore-status). Пусто на Target.
 	PeerStatuses []RunPeerStatus `json:"peer_statuses,omitempty"`

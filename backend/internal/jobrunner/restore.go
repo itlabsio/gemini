@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -13,8 +12,6 @@ import (
 	"time"
 
 	"github.com/minio/minio-go/v7"
-
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/storage"
 )
 
 // runRestore применяет проверенный дамп (pg_dump -Fc) к целевой базе через
@@ -26,7 +23,7 @@ import (
 // Дальше по RESTORE_MODE:
 //
 //	recreate — оборвать сессии → ALTER DATABASE RENAME → CREATE DATABASE OWNER
-//	           <owner> → CREATE EXTENSION из <key>.extensions → pg_restore →
+//	           <owner> → CREATE EXTENSION из EXTENSIONS → pg_restore →
 //	           DROP old. При ошибке old остаётся, прогон failed. Требует прав на
 //	           RENAME/CREATE DATABASE — self-hosted с суперюзером.
 //	in_place — оборвать сессии → CREATE EXTENSION IF NOT EXISTS →
@@ -45,11 +42,9 @@ func runRestore(ctx context.Context, e Env) error {
 		return fmt.Errorf("restore: TARGET_DB_NAME and S3_OBJECT_KEY are required")
 	}
 	dumpPath := filepath.Join(e.WorkDir, "db.dump")
-	src, err := downloadDump(ctx, e, dumpPath)
-	if err != nil {
+	if err := downloadDump(ctx, e, dumpPath); err != nil {
 		return err
 	}
-	e.src = src
 
 	// (1) сверка контрольной суммы — до любых деструктивных операций.
 	//
@@ -120,7 +115,7 @@ func runRestore(ctx context.Context, e Env) error {
 
 // downloadDump качает дамп из первого бакета, где получилось (начиная с
 // S3_BUCKET_ID). Подменённую копию в любом бакете отсечёт сверка sha256 ниже.
-func downloadDump(ctx context.Context, e Env, dumpPath string) (storage.JobBucket, error) {
+func downloadDump(ctx context.Context, e Env, dumpPath string) error {
 	var errs []error
 	for _, b := range e.restoreOrder() {
 		mc, err := b.Minio()
@@ -129,12 +124,12 @@ func downloadDump(ctx context.Context, e Env, dumpPath string) (storage.JobBucke
 			err = mc.FGetObject(ctx, b.Bucket, e.S3ObjectKey, dumpPath, minio.GetObjectOptions{})
 		}
 		if err == nil {
-			return b, nil
+			return nil
 		}
 		log.Printf("restore: bucket %s: %v", b, err)
 		errs = append(errs, fmt.Errorf("%s: %w", b, err))
 	}
-	return storage.JobBucket{}, fmt.Errorf("download dump: %w", errors.Join(errs...))
+	return fmt.Errorf("download dump: %w", errors.Join(errs...))
 }
 
 // restoreRecreate: RENAME старую базу, создать новую, накатить, выставить
@@ -208,54 +203,26 @@ func restoreInPlace(ctx context.Context, e Env, target, dumpPath string) error {
 	return nil
 }
 
-// ensureExtensions создаёт расширения из <key>.extensions ДО наката дампа, как
+// ensureExtensions создаёт расширения из EXTENSIONS ДО наката дампа, как
 // restorer (не под SET ROLE — расширения принадлежат системной роли).
 //   - self-hosted: restorer-суперюзер создаёт что угодно;
 //   - MDB: CREATE EXTENSION IF NOT EXISTS — no-op, если включено в консоли;
 //     иначе понятная ранняя ошибка вместо падения посреди дампа.
 //
-// Файл отсутствует (старый дамп / нет расширений) — тихо пропускаем.
+// Список голова передаёт, только сверив подпись Source над <key>.extensions:
+// сам файл из бакета Job не читает — запись в бакет не должна давать CREATE
+// EXTENSION под restorer'ом. Пусто (нет расширений / дамп с подписью v1) — пропуск.
 func ensureExtensions(ctx context.Context, e Env, database string) error {
-	names, err := downloadExtensionList(ctx, e)
-	if err != nil {
-		return err
-	}
-	for _, n := range names {
+	for _, n := range e.Extensions {
 		if err := psqlExec(ctx, e, database,
 			fmt.Sprintf(`CREATE EXTENSION IF NOT EXISTS %s;`, quoteIdent(n))); err != nil {
 			return fmt.Errorf("create extension %s: %w", n, err)
 		}
 	}
-	if len(names) > 0 {
-		log.Printf("restore: ensured %d extension(s): %s", len(names), strings.Join(names, ", "))
+	if len(e.Extensions) > 0 {
+		log.Printf("restore: ensured %d extension(s): %s", len(e.Extensions), strings.Join(e.Extensions, ", "))
 	}
 	return nil
-}
-
-func downloadExtensionList(ctx context.Context, e Env) ([]string, error) {
-	mc, err := e.src.Minio()
-	if err != nil {
-		return nil, err
-	}
-	obj, err := mc.GetObject(ctx, e.src.Bucket, e.S3ObjectKey+".extensions", minio.GetObjectOptions{})
-	if err != nil {
-		return nil, err
-	}
-	defer obj.Close()
-	b, err := io.ReadAll(io.LimitReader(obj, 64<<10))
-	if err != nil {
-		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
-			return nil, nil // sidecar'а нет — не ошибка
-		}
-		return nil, err
-	}
-	var names []string
-	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
-		if line = strings.TrimSpace(line); line != "" && validExtName(line) {
-			names = append(names, line)
-		}
-	}
-	return names, nil
 }
 
 // databaseExists проверяет наличие базы через служебную postgres.

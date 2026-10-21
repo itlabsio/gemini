@@ -28,27 +28,12 @@ func listExtensions(ctx context.Context, e Env) ([]string, error) {
 		return nil, err
 	}
 	var exts []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line = strings.TrimSpace(line); line != "" && validExtName(line) {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+		if line = strings.TrimSpace(line); line != "" && storage.ValidExtName(line) {
 			exts = append(exts, line)
 		}
 	}
 	return exts, nil
-}
-
-// validExtName — консервативная проверка имени расширения (уходит в SQL restore'а).
-func validExtName(s string) bool {
-	if s == "" || len(s) > 63 {
-		return false
-	}
-	for _, r := range s {
-		ok := r == '_' || r == '-' ||
-			(r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
-		if !ok {
-			return false
-		}
-	}
-	return true
 }
 
 // runDump: pg_dump -Fc → /work/db.dump → sha256 → в каждый бакет: upload дампа →

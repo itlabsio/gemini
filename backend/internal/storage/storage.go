@@ -22,13 +22,15 @@ import (
 // ChecksumSuffix добавляется к ключу дампа для файла контрольной суммы.
 const ChecksumSuffix = ".sha256"
 
-// SignatureSuffix — Ed25519-подпись манифеста дампа (ключ + sha256) приватным
+// SignatureSuffix — Ed25519-подпись манифеста дампа (ключ + sha256 + digest
+// <key>.extensions) приватным
 // ключом Source. Кладёт Source-голова (не Job — приватник в подах не появляется),
 // Target проверяет запиненным публичным ключом. См. peer.SignArtifact.
 const SignatureSuffix = ".sig"
 
 // ExtensionsSuffix — список расширений исходной базы (по одному в строке), кладёт
-// dump-Job. restore на self-hosted создаёт их до наката. См. jobrunner.
+// dump-Job. Покрыт подписью Source: Target применяет список, только сверив его
+// digest (см. peer.SignArtifact), и передаёт restore-Job'у через env.
 const ExtensionsSuffix = ".extensions"
 
 // Client — обёртка над minio-go под конкретный бакет.

@@ -292,9 +292,10 @@ func restoreModeOf(inst *model.Instance) model.RestoreMode {
 	return model.RestoreRecreate
 }
 
-// StartRestore запускает restore целевой базы (голова DR). bucketID — бакет,
-// где дамп точно лежит; Job начнёт с него и при ошибке перейдёт к остальным.
-func (o *Operator) StartRestore(ctx context.Context, m *model.DatabaseMapping, s3Key, checksum, bucketID string, trigger model.RunTrigger, eventKey string) (*model.BackupRun, error) {
+// StartRestore запускает restore целевой базы (голова DR) по проверенному
+// дампу (см. VerifiedDump). v.BucketID — бакет, где дамп точно лежит; Job
+// начнёт с него и при ошибке перейдёт к остальным.
+func (o *Operator) StartRestore(ctx context.Context, m *model.DatabaseMapping, s3Key string, v *VerifiedDump, trigger model.RunTrigger, eventKey string) (*model.BackupRun, error) {
 	if o.k8s == nil {
 		return nil, ErrNoK8s
 	}
@@ -323,7 +324,7 @@ func (o *Operator) StartRestore(ctx context.Context, m *model.DatabaseMapping, s
 		Kind:        model.KindRestore,
 		Trigger:     trigger,
 		S3ObjectKey: s3Key,
-		Checksum:    checksum,
+		Checksum:    v.Checksum,
 		EventKey:    eventKey,
 		InitiatedBy: "webhook:source",
 	})
@@ -337,9 +338,12 @@ func (o *Operator) StartRestore(ctx context.Context, m *model.DatabaseMapping, s
 	jobEnv := map[string]string{
 		"GEMINI_RUN_ID":   run.ID,
 		"S3_OBJECT_KEY":   s3Key,
-		"EXPECTED_SHA256": checksum,
+		"EXPECTED_SHA256": v.Checksum,
 		"RESTORE_MODE":    string(restoreModeOf(inst)),
-		"S3_BUCKET_ID":    bucketID,
+		"S3_BUCKET_ID":    v.BucketID,
+		// Проверенный голова список (имена прошли storage.ValidExtName, запятых
+		// в них нет): сам Job <key>.extensions из бакета больше не читает.
+		"EXTENSIONS": strings.Join(v.Extensions, ","),
 	}
 	if m.TargetOwner != "" {
 		jobEnv["TARGET_DB_OWNER"] = m.TargetOwner
@@ -685,11 +689,11 @@ func (o *Operator) onRunFailed(ctx context.Context, run model.BackupRun, msg str
 	}
 }
 
-// signDump кладёт рядом с дампом подпись манифеста (ключ + sha256) приватным
-// ключом Source. Подписывает голова, а не dump-Job: приватник в поды не попадает.
-// Подпись асимметричная и самодостаточная — один .sig проверяют все Target'ы;
-// кладётся в каждый бакет, где дамп залит. Бакеты без дампа (заливка туда упала)
-// — нотификация: копия дампа там не появится.
+// signDump кладёт рядом с дампом подпись манифеста (ключ, sha256 и digest
+// <key>.extensions) приватным ключом Source. Подписывает голова, а не dump-Job:
+// приватник в поды не попадает. Подпись асимметричная и самодостаточная — один
+// .sig проверяют все Target'ы; кладётся в каждый бакет, где дамп залит. Бакеты
+// без дампа (заливка туда упала) — нотификация: копия дампа там не появится.
 func (o *Operator) signDump(ctx context.Context, db *model.Database, run *model.BackupRun) {
 	if run.S3ObjectKey == "" || run.Checksum == "" {
 		return
@@ -699,7 +703,12 @@ func (o *Operator) signDump(ctx context.Context, db *model.Database, run *model.
 		log.Printf("operator: no head key — dump %s left unsigned: %v", run.S3ObjectKey, err)
 		return
 	}
-	sig := peer.SignArtifact(priv, run.S3ObjectKey, run.Checksum)
+	extDigest, err := o.dumpExtensionsDigest(ctx, run)
+	if err != nil {
+		log.Printf("operator: dump %s left unsigned: %v", run.S3ObjectKey, err)
+		return
+	}
+	sig := peer.SignArtifact(priv, run.S3ObjectKey, run.Checksum, extDigest)
 	clients, _ := o.buckets.Clients(ctx)
 	var missing []string
 	for _, c := range clients {
@@ -723,14 +732,44 @@ func (o *Operator) signDump(ctx context.Context, db *model.Database, run *model.
 	}
 }
 
+// dumpExtensionsDigest (Source) — digest <key>.extensions для подписи. Считается
+// один раз из первого бакета, где дамп залит (sidecar во всех бакетах один и
+// тот же), и сохраняется в прогоне: BackfillSignatures сверяет подписи по нему,
+// не перечитывая sidecar каждый цикл.
+func (o *Operator) dumpExtensionsDigest(ctx context.Context, run *model.BackupRun) (string, error) {
+	if run.ExtensionsDigest != "" {
+		return run.ExtensionsDigest, nil
+	}
+	var errs []error
+	for _, c := range o.buckets.ReadyClients(ctx, run.S3ObjectKey) {
+		raw, present, err := c.ReadExtensions(ctx, run.S3ObjectKey)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", c.Name(), err))
+			continue
+		}
+		d := storage.ExtensionsDigest(raw, present)
+		if _, err := o.store.UpdateRun(ctx, run.ID, store.RunUpdate{
+			Status: run.Status, ExtensionsDigest: &d,
+		}); err != nil {
+			log.Printf("operator: save extensions digest for run %s: %v", run.ID, err)
+		}
+		run.ExtensionsDigest = d
+		return d, nil
+	}
+	if len(errs) == 0 {
+		return "", fmt.Errorf("dump %s is not in any bucket", run.S3ObjectKey)
+	}
+	return "", fmt.Errorf("read extensions list: %w", errors.Join(errs...))
+}
+
 // signatureBackfillWindow — насколько назад BackfillSignatures ищет неподписанные
 // дампы. Дампы старше этого окна на Target'е всё равно не восстанавливают.
 const signatureBackfillWindow = 30 * 24 * time.Hour
 
 // BackfillSignatures (Source) до-подписывает успешные дампы, у которых в бакете
 // ещё нет <key>.sig (дамп завершился раньше, чем сгенерировался ключ головы) или
-// подпись старого формата (HMAC до перехода на Ed25519). Проходит по всем
-// бакетам, где дамп лежит.
+// подпись старого формата (HMAC до перехода на Ed25519, Ed25519 v1 без списка
+// расширений). Проходит по всем бакетам, где дамп лежит.
 func (o *Operator) BackfillSignatures(ctx context.Context) {
 	if !o.cfg.IsSource() {
 		return
@@ -752,16 +791,20 @@ func (o *Operator) BackfillSignatures(ctx context.Context) {
 	}
 	var signed int
 	for i := range runs {
-		r := runs[i]
+		r := &runs[i]
+		extDigest, err := o.dumpExtensionsDigest(ctx, r)
+		if err != nil {
+			continue // дампа нет ни в одном бакете (вычищен retention'ом) — подписывать нечего
+		}
 		for _, c := range clients {
 			if sig, err := c.ReadSignature(ctx, r.S3ObjectKey); err == nil &&
-				peer.VerifyArtifact(pub, r.S3ObjectKey, r.Checksum, sig) {
+				peer.VerifyArtifact(pub, r.S3ObjectKey, r.Checksum, extDigest, sig) {
 				continue // валидная подпись текущим ключом уже есть
 			}
 			if ready, err := c.ChecksumReady(ctx, r.S3ObjectKey); err != nil || !ready {
 				continue // дампа в этом бакете нет — подписывать нечего
 			}
-			sig := peer.SignArtifact(priv, r.S3ObjectKey, r.Checksum)
+			sig := peer.SignArtifact(priv, r.S3ObjectKey, r.Checksum, extDigest)
 			if err := c.PutSignature(ctx, r.S3ObjectKey, sig); err != nil {
 				log.Printf("operator: signature backfill: put %s: %v", c.Object(r.S3ObjectKey), err)
 				continue
@@ -774,47 +817,69 @@ func (o *Operator) BackfillSignatures(ctx context.Context) {
 	}
 }
 
-// VerifiedChecksum (Target) возвращает sha256 дампа и бакет, где он лежит, ТОЛЬКО
-// если подпись рядом сходится с запиненным публичным ключом Source. Это
-// единственный доверенный способ узнать сумму из бакета: сам .sha256
-// подделывается с дампом. Бакеты перебираются по порядку до первого успеха.
-func (o *Operator) VerifiedChecksum(ctx context.Context, s3Key string) (sum, bucketID string, err error) {
+// VerifiedDump — то, что Target берёт из бакета, сверив подпись Source.
+type VerifiedDump struct {
+	Checksum string
+	BucketID string
+	// Extensions — список расширений из <key>.extensions, digest которого
+	// подписан Source. nil у дампа с подписью v1: его sidecar не доверенный.
+	Extensions []string
+}
+
+// VerifiedDump (Target) возвращает sha256 дампа, бакет, где он лежит, и список
+// расширений ТОЛЬКО если подпись рядом сходится с запиненным публичным ключом
+// Source. Это единственный доверенный способ узнать их из бакета: .sha256 и
+// .extensions подделываются вместе с дампом. Бакеты перебираются по порядку до
+// первого успеха.
+func (o *Operator) VerifiedDump(ctx context.Context, s3Key string) (*VerifiedDump, error) {
 	pub, err := o.store.PeerPublicKey(ctx, "source")
 	if err != nil || len(pub) == 0 {
-		return "", "", errors.New("no pinned Source public key — pair with Source first")
+		return nil, errors.New("no pinned Source public key — pair with Source first")
 	}
 	clients, _ := o.buckets.Clients(ctx)
 	if len(clients) == 0 {
-		return "", "", storage.ErrNoBuckets
+		return nil, storage.ErrNoBuckets
 	}
 	var errs []error
 	for _, c := range clients {
-		sum, err := verifiedChecksumIn(ctx, c, pub, s3Key)
+		v, err := verifiedDumpIn(ctx, c, pub, s3Key)
 		if err == nil {
-			return sum, c.ID(), nil
+			return v, nil
 		}
 		errs = append(errs, fmt.Errorf("%s: %w", c.Name(), err))
 	}
-	return "", "", errors.Join(errs...)
+	return nil, errors.Join(errs...)
 }
 
-func verifiedChecksumIn(ctx context.Context, c *storage.Client, pub ed25519.PublicKey, s3Key string) (string, error) {
+func verifiedDumpIn(ctx context.Context, c *storage.Client, pub ed25519.PublicKey, s3Key string) (*VerifiedDump, error) {
 	raw, err := c.ReadChecksum(ctx, s3Key)
 	if err != nil {
-		return "", fmt.Errorf("read checksum for %s: %w", s3Key, err)
+		return nil, fmt.Errorf("read checksum for %s: %w", s3Key, err)
 	}
 	sum := firstField(raw)
 	if sum == "" {
-		return "", fmt.Errorf("empty checksum for %s", s3Key)
+		return nil, fmt.Errorf("empty checksum for %s", s3Key)
 	}
 	sig, err := c.ReadSignature(ctx, s3Key)
 	if err != nil {
-		return "", fmt.Errorf("dump %s is not signed by Source: %w", s3Key, err)
+		return nil, fmt.Errorf("dump %s is not signed by Source: %w", s3Key, err)
 	}
-	if !peer.VerifyArtifact(pub, s3Key, sum, sig) {
-		return "", fmt.Errorf("signature mismatch for %s — refusing to restore", s3Key)
+	exts, present, err := c.ReadExtensions(ctx, s3Key)
+	if err != nil {
+		return nil, fmt.Errorf("read extensions list for %s: %w", s3Key, err)
 	}
-	return sum, nil
+	v := &VerifiedDump{Checksum: sum, BucketID: c.ID()}
+	switch {
+	case peer.VerifyArtifact(pub, s3Key, sum, storage.ExtensionsDigest(exts, present), sig):
+		v.Extensions = storage.ParseExtensions(exts)
+	case peer.VerifyArtifactV1(pub, s3Key, sum, sig):
+		// Подпись до v2: дамп подлинный, но список расширений ею не покрыт.
+		// Накатываем без него; Source переподпишет дамп в v2 фоновым backfill'ом.
+		log.Printf("operator: %s has a v1 signature — restoring without its unsigned extensions list", c.Object(s3Key))
+	default:
+		return nil, fmt.Errorf("signature mismatch for %s — refusing to restore", s3Key)
+	}
+	return v, nil
 }
 
 func (o *Operator) notifyPeerBackupReady(ctx context.Context, db *model.Database, run *model.BackupRun) {

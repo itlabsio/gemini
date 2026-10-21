@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/notify"
@@ -59,14 +60,25 @@ func (s *Server) webhookBackupReady(w http.ResponseWriter, r *http.Request) {
 
 	// Бакеты у Target свои: ищем тот, где дамп уже полностью залит. Не нашли —
 	// 503, Source повторит с backoff'ом, а дальше подхватит fallback-поллинг.
-	ready := s.d.Storage.ReadyClients(r.Context(), req.S3ObjectKey)
-	if len(ready) == 0 {
+	if len(s.d.Storage.ReadyClients(r.Context(), req.S3ObjectKey)) == 0 {
 		writeError(w, http.StatusServiceUnavailable, "dump not found in any S3 bucket configured on this side")
 		return
 	}
+	// Список расширений из бакета применяется только с подписью Source (HMAC
+	// webhook'а его не покрывает), поэтому и здесь — та же проверка, что у
+	// поллинга. Source подписывает дамп до отправки webhook'а; не сошлось —
+	// 503, ретрай/поллинг подхватят дамп после до-подписи.
+	v, err := s.d.Operator.VerifiedDump(r.Context(), req.S3ObjectKey)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "dump is not verifiably from Source: "+err.Error())
+		return
+	}
+	if want := firstField(req.SHA256); want != "" && !strings.EqualFold(want, v.Checksum) {
+		writeError(w, http.StatusConflict, "sha256 in webhook does not match the signed checksum")
+		return
+	}
 
-	run, err := s.d.Operator.StartRestore(r.Context(), m, req.S3ObjectKey, firstField(req.SHA256),
-		ready[0].ID(), model.TriggerWebhook, eventKey)
+	run, err := s.d.Operator.StartRestore(r.Context(), m, req.S3ObjectKey, v, model.TriggerWebhook, eventKey)
 	switch {
 	case err == nil:
 		writeJSON(w, http.StatusAccepted, map[string]any{"status": "restore-started", "run_id": run.ID})
