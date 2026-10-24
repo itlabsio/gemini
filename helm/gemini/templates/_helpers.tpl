@@ -65,7 +65,7 @@ app.kubernetes.io/component: frontend
 {{- end -}}
 
 {{/*
-Внешний URL головы, выведенный из ingress: https://host (tls) | http://host.
+Внешний URL инстанса, выведенный из ingress: https://host (tls) | http://host.
 Пусто, если ingress выключен или host не задан.
 */}}
 {{- define "gemini.externalUrl" -}}

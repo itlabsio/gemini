@@ -43,7 +43,7 @@ data:
   K8S_NAMESPACE: {{ .Release.Namespace | quote }}
   JOB_IMAGE: {{ include "gemini.job.image" . | quote }}
   JOB_SERVICE_ACCOUNT: {{ .Values.job.serviceAccount | quote }}
-  # Deployment backend'а: голова берёт у него UID (ownerReference для Job/CronJob/Secret),
+  # Deployment backend'а: инстанс берёт у него UID (ownerReference для Job/CronJob/Secret),
   # imagePullSecrets и лейбл app.kubernetes.io/instance.
   JOB_OWNER_DEPLOYMENT: {{ printf "%s-backend" (include "gemini.fullname" .) | quote }}
   JOB_STORAGE_CLASS: {{ .Values.job.storage.className | quote }}

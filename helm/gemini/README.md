@@ -2,7 +2,7 @@
 
 ![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.1.0](https://img.shields.io/badge/AppVersion-0.1.0-informational?style=flat-square)
 
-СРК Gemini — одна "голова" (backend + frontend) DR-системы логической репликации PostgreSQL. Роль (source|dr) задаётся через values.headRole.
+СРК Gemini — один инстанс (backend + frontend) системы переноса дампов PostgreSQL между контурами. Роль (source|target) задаётся через values.headRole.
 
 ## Maintainers
 
@@ -14,7 +14,7 @@
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| headRole | string | `"source"` | Роль головы: source (текущий контур, инициатор расписания) | target (DR-контур, restore) |
+| headRole | string | `"source"` | Роль инстанса: source (исходный контур, дамп по расписанию) | target (принимающий контур — DR, тест и т.п., restore) |
 | nameOverride | string | `""` | Переопределяет имя в шаблонах (app.kubernetes.io/name); пусто = Chart.Name |
 | fullnameOverride | string | `""` | Переопределяет префикс имён ресурсов (Deployment/Service/Ingress/...); пусто = Release.Name |
 | image.backend.repository | string | `"ghcr.io/itlabsio/gemini/backend"` | Репозиторий образа backend |
@@ -24,8 +24,8 @@
 | image.frontend.tag | string | `""` | Тег. Пусто = appVersion чарта |
 | image.frontend.pullPolicy | string | `"IfNotPresent"` | Политика загрузки образа frontend |
 | imagePullSecrets | list | `[]` | Секреты для доступа к приватному registry (imagePullSecrets пода) |
-| publicUrl | string | `""` | Внешний URL этой головы (нужен второй голове для обратных webhook'ов).    Пусто и включён ingress с host -> выводится автоматически: https://host (tls) | http://host.    Задавать вручную только если ingress выключен или пиру нужен другой хостнейм. |
-| backend.replicas | int | `1` | Число реплик backend |
+| publicUrl | string | `""` | Внешний URL этого инстанса (нужен спаренным инстансам Gemini для webhook'ов).    Пусто и включён ingress с host -> выводится автоматически: https://host (tls) | http://host.    Задавать вручную только если ingress выключен или пиру нужен другой хостнейм. |
+| backend.replicas | int | `1` | Число реплик backend. API обслуживают все, фоновые циклы (watcher, CronJob-шаблоны,    poller, до-подпись) — только лидер по Lease <fullname>-backend-leader |
 | backend.revisionHistoryLimit | int | `1` | Сколько старых ReplicaSet'ов хранить для отката |
 | backend.extraEnv | list | `[]` | Дополнительные env (несекретные) |
 | backend.resources | object | `{"limits":{"cpu":"1","memory":"512Mi"},"requests":{"cpu":"50m","memory":"128Mi"}}` | requests/limits контейнера backend |
@@ -64,12 +64,12 @@
 | notify.enabled | bool | `false` | Включить отправку уведомлений о результатах dump/restore |
 | notify.provider | string | `"slack"` | slack | telegram |
 | notify.existingSecret | string | `"gemini-notify"` | k8s Secret с ключом NOTIFY_WEBHOOK_URL (+ NOTIFY_TELEGRAM_CHAT_ID для telegram) |
-| poller.interval | string | `"5m"` | Период fallback-поллинга S3 (только target-голова) |
-| peerRetry.initialDelay | string | `"1s"` | Начальная задержка ретрая межголовых запросов |
+| poller.interval | string | `"5m"` | Период fallback-поллинга S3 (только target-инстанс) |
+| peerRetry.initialDelay | string | `"1s"` | Начальная задержка ретрая запросов между инстансами Gemini |
 | peerRetry.maxDelay | string | `"60s"` | Максимальная задержка ретрая (экспоненциальный backoff) |
 | peerRetry.maxAttempts | int | `5` | Максимальное число попыток |
-| peerRetry.clockSkew | string | `"30s"` | Допустимое расхождение часов между головами |
-| migrate.enabled | bool | `true` | Запускать миграции своей БД метаданных как Job (helm hook post-install,post-upgrade) |
+| peerRetry.clockSkew | string | `"30s"` | Допустимое расхождение часов между инстансами Gemini |
+| migrate.enabled | bool | `true` | Запускать миграции своей БД метаданных как Job (helm hook pre-install,pre-upgrade; Argo CD PreSync) |
 | migrate.backoffLimit | int | `3` | backoffLimit Job'а миграции |
 | job.serviceAccount | string | `"gemini-job"` | SA, под которым бегают dump/restore-поды (создаётся при rbac.create) |
 | job.image | string | `""` | образ Job'ов; пусто = image.backend (тот же бинарь, подкоманды dump/restore) |
@@ -87,10 +87,10 @@
 | service.type | string | `"ClusterIP"` | Тип Service (ClusterIP | NodePort | LoadBalancer) |
 | service.backendPort | int | `8080` | Порт Service backend |
 | service.frontendPort | int | `3000` | Порт Service frontend |
-| ingress.enabled | bool | `false` | Создавать Ingress для головы |
+| ingress.enabled | bool | `false` | Создавать Ingress для инстанса |
 | ingress.className | string | `"nginx"` | ingressClassName |
-| ingress.annotations | object | `{"nginx.ingress.kubernetes.io/limit-burst-multiplier":"5","nginx.ingress.kubernetes.io/limit-connections":"20","nginx.ingress.kubernetes.io/limit-rps":"20","nginx.ingress.kubernetes.io/proxy-buffer-size":"8k"}` | Аннотации ingress.    proxy-buffer-size поднят под Set-Cookie next-auth (дефолтных 4k не    хватает: "upstream sent too big header").    limit-* — рейт-лимит: /pairing/exchange, /peer и /webhook доступны из    интернета по определению (вторая голова живёт в другом контуре), а само    приложение лимитировать по IP не может — за ingress все клиентские адреса    одинаковые, а X-Forwarded-For подделывается. Значения под интерактивную    админку: межголовых запросов единицы в час. |
-| ingress.host | string | `"gemini.example.com"` | Хост головы. /api/auth → frontend; /api, /peer, /webhook, /pairing/exchange → backend; / → frontend.    При enabled=true и заданном host отсюда выводится publicUrl (если он не задан явно). |
+| ingress.annotations | object | `{"nginx.ingress.kubernetes.io/limit-burst-multiplier":"5","nginx.ingress.kubernetes.io/limit-connections":"20","nginx.ingress.kubernetes.io/limit-rps":"20","nginx.ingress.kubernetes.io/proxy-buffer-size":"8k"}` | Аннотации ingress.    proxy-buffer-size поднят под Set-Cookie next-auth (дефолтных 4k не    хватает: "upstream sent too big header").    limit-* — рейт-лимит: /pairing/exchange, /peer и /webhook доступны из    интернета по определению (спаренный инстанс живёт в другом контуре), а само    приложение лимитировать по IP не может — за ingress все клиентские адреса    одинаковые, а X-Forwarded-For подделывается. Значения под интерактивную    админку: запросов между инстансами единицы в час. |
+| ingress.host | string | `"gemini.example.com"` | Хост инстанса. /api/auth → frontend; /api, /peer, /webhook, /pairing/exchange → backend; / → frontend.    При enabled=true и заданном host отсюда выводится publicUrl (если он не задан явно). |
 | ingress.tls | bool | `true` | Включить TLS на ingress |
 | ingress.tlsSecret | string | `""` | Имя k8s Secret с TLS-сертификатом; пусто = <host>-tls |
 | networkPolicy.enabled | bool | `false` | Ограничить исходящий трафик backend'а (DNS + HTTPS + PostgreSQL). Точечная настройка — на стороне кластера. |

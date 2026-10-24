@@ -1,8 +1,8 @@
 apiVersion: v2
 name: gemini
 description: >-
-  СРК Gemini — одна "голова" (backend + frontend) DR-системы логической
-  репликации PostgreSQL. Роль (source|dr) задаётся через values.headRole.
+  СРК Gemini — один инстанс (backend + frontend) системы переноса дампов
+  PostgreSQL между контурами. Роль (source|target) задаётся через values.headRole.
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

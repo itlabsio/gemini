@@ -1,4 +1,4 @@
-# -- Роль головы: source (текущий контур, инициатор расписания) | target (DR-контур, restore)
+# -- Роль инстанса: source (исходный контур, дамп по расписанию) | target (принимающий контур — DR, тест и т.п., restore)
 headRole: source
 
 # -- Переопределяет имя в шаблонах (app.kubernetes.io/name); пусто = Chart.Name
@@ -25,7 +25,7 @@ image:
 # -- Секреты для доступа к приватному registry (imagePullSecrets пода)
 imagePullSecrets: []
 
-# -- Внешний URL этой головы (нужен второй голове для обратных webhook'ов).
+# -- Внешний URL этого инстанса (нужен спаренным инстансам Gemini для webhook'ов).
 #    Пусто и включён ingress с host -> выводится автоматически: https://host (tls) | http://host.
 #    Задавать вручную только если ingress выключен или пиру нужен другой хостнейм.
 publicUrl: ""
@@ -153,21 +153,21 @@ notify:
   existingSecret: gemini-notify
 
 poller:
-  # -- Период fallback-поллинга S3 (только target-голова)
+  # -- Период fallback-поллинга S3 (только target-инстанс)
   interval: 5m
 
 peerRetry:
-  # -- Начальная задержка ретрая межголовых запросов
+  # -- Начальная задержка ретрая запросов между инстансами Gemini
   initialDelay: 1s
   # -- Максимальная задержка ретрая (экспоненциальный backoff)
   maxDelay: 60s
   # -- Максимальное число попыток
   maxAttempts: 5
-  # -- Допустимое расхождение часов между головами
+  # -- Допустимое расхождение часов между инстансами Gemini
   clockSkew: 30s
 
 migrate:
-  # -- Запускать миграции своей БД метаданных как Job (helm hook post-install,post-upgrade)
+  # -- Запускать миграции своей БД метаданных как Job (helm hook pre-install,pre-upgrade; Argo CD PreSync)
   enabled: true
   # -- backoffLimit Job'а миграции
   backoffLimit: 3
@@ -214,7 +214,7 @@ service:
   frontendPort: 3000
 
 ingress:
-  # -- Создавать Ingress для головы
+  # -- Создавать Ingress для инстанса
   enabled: false
   # -- ingressClassName
   className: nginx
@@ -222,16 +222,16 @@ ingress:
   #    proxy-buffer-size поднят под Set-Cookie next-auth (дефолтных 4k не
   #    хватает: "upstream sent too big header").
   #    limit-* — рейт-лимит: /pairing/exchange, /peer и /webhook доступны из
-  #    интернета по определению (вторая голова живёт в другом контуре), а само
+  #    интернета по определению (спаренный инстанс живёт в другом контуре), а само
   #    приложение лимитировать по IP не может — за ingress все клиентские адреса
   #    одинаковые, а X-Forwarded-For подделывается. Значения под интерактивную
-  #    админку: межголовых запросов единицы в час.
+  #    админку: запросов между инстансами единицы в час.
   annotations:
     nginx.ingress.kubernetes.io/proxy-buffer-size: "8k"
     nginx.ingress.kubernetes.io/limit-rps: "20"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
     nginx.ingress.kubernetes.io/limit-connections: "20"
-  # -- Хост головы. /api/auth → frontend; /api, /peer, /webhook, /pairing/exchange → backend; / → frontend.
+  # -- Хост инстанса. /api/auth → frontend; /api, /peer, /webhook, /pairing/exchange → backend; / → frontend.
   #    При enabled=true и заданном host отсюда выводится publicUrl (если он не задан явно).
   host: gemini.example.com
   # -- Включить TLS на ingress

@@ -1,15 +1,15 @@
 # helm/gemini
 
-Единый чарт для **одной головы** Gemini (backend + frontend + RBAC). Роль головы —
-`values.headRole` (`source` | `dr`); `helm/examples/values-source.yaml` и
-`helm/examples/values-dr.yaml` — два набора оверрайдов одного и того же чарта.
+Единый чарт для **одного инстанса** Gemini (backend + frontend + RBAC). Роль инстанса —
+`values.headRole` (`source` | `target`); `helm/examples/values-source.yaml` и
+`helm/examples/values-target.yaml` — два набора оверрайдов одного и того же чарта.
 
 ```bash
 helm lint ./gemini -f examples/values-source.yaml
 helm template gemini-source ./gemini -f examples/values-source.yaml --output-dir out
 
 helm install gemini-source ./gemini -f examples/values-source.yaml -n gemini --create-namespace
-helm install gemini-dr     ./gemini -f examples/values-dr.yaml     -n gemini --create-namespace
+helm install gemini-target ./gemini -f examples/values-target.yaml -n gemini --create-namespace
 ```
 
 ## Что деплоит

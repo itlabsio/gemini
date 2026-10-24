@@ -18,7 +18,7 @@ spec:
       ports:
         - { protocol: UDP, port: 53 }
         - { protocol: TCP, port: 53 }
-    # k8s API + внешние HTTPS (OIDC/JWKS, S3, webhook второй головы, notify)
+    # k8s API + внешние HTTPS (OIDC/JWKS, S3, webhook спаренных инстансов Gemini, notify)
     - ports:
         - { protocol: TCP, port: 443 }
         - { protocol: TCP, port: 6443 }

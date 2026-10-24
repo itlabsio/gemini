@@ -93,7 +93,7 @@ func runServe() {
 	defer pool.Close()
 
 	// Миграции сознательно НЕ применяются на старте serve — их накатывает
-	// отдельный `gemini migrate` (Helm hook Job / compose-сервис `migrate`).
+	// отдельный `gemini migrate` (Helm hook Job; локально — вручную).
 	if err := db.EnsureMigrated(ctx, pool); err != nil {
 		log.Fatalf("db: %v (run `gemini migrate` first)", err)
 	}

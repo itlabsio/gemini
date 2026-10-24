@@ -4,14 +4,14 @@ Backend:  {{ include "gemini.fullname" . }}-backend  ({{ include "gemini.backend
 Frontend: {{ include "gemini.fullname" . }}-frontend ({{ include "gemini.frontend.image" . }})
 Job image: {{ include "gemini.job.image" . }}
 
-Роль головы: {{ .Values.headRole }}
+Роль инстанса: {{ .Values.headRole }}
 {{- if eq .Values.headRole "source" }}
   • активен scheduler: CronJob'ы по Database.schedule_cron
-  • webhook: POST /webhook/restore-status (приём от target-головы)
+  • webhook: POST /webhook/restore-status (приём от target-инстансов)
   • pairing: POST /api/pairing/issue-code
 {{- else }}
   • активен fallback-поллинг S3 каждые {{ .Values.poller.interval }}
-  • webhook: POST /webhook/backup-ready (приём от source-головы)
+  • webhook: POST /webhook/backup-ready (приём от source-инстанса)
   • pairing: POST /api/pairing/init
 {{- end }}
 

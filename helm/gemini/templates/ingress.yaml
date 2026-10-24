@@ -35,7 +35,7 @@ spec:
                 name: {{ $frontendSvc }}
                 port:
                   number: {{ .Values.service.frontendPort }}
-          # Межголовые и API-пути обслуживает backend (health-probes наружу не выставляем)
+          # Пути между инстансами Gemini и API-пути обслуживает backend (health-probes наружу не выставляем)
           {{- range $p := list "/api" "/peer" "/webhook" "/pairing/exchange" }}
           - path: {{ $p }}
             pathType: Prefix

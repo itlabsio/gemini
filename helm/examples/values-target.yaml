@@ -1,4 +1,4 @@
-# Оверрайды для головы target (DR-контур).
+# Оверрайды для инстанса target (принимающий контур: DR, тест и т.п.).
 #   helm install gemini-target ./helm/gemini -f helm/examples/values-target.yaml -n gemini --create-namespace
 #
 # Стратегия restore (recreate | in_place | in_place_per_db) и роль-владелец
@@ -20,7 +20,7 @@ image:
     tag: "0.1.0"
 
 oidc:
-  # DR может использовать свой Keycloak — токен всё равно валидируется локально
+  # Target может использовать свой Keycloak — токен всё равно валидируется локально
   issuerUrl: https://keycloak.target.example.com/realms/gemini
   clientId: gemini
   existingSecret: gemini-oidc
