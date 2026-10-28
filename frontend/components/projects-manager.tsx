@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
@@ -98,7 +99,18 @@ export function ProjectsManager({ projects }: { projects: Project[] }) {
                 <TableRow key={p.name}>
                   <TableCell className="font-medium">{p.name}</TableCell>
                   <TableCell>
-                    <Badge variant="secondary">{p.instance_count}</Badge>
+                    {p.instance_count > 0 ? (
+                      <Link
+                        href={`/instances?project=${encodeURIComponent(p.name)}`}
+                        title="Показать инстансы проекта"
+                      >
+                        <Badge variant="secondary" className="hover:bg-secondary/70">
+                          {p.instance_count}
+                        </Badge>
+                      </Link>
+                    ) : (
+                      <Badge variant="secondary">0</Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button
