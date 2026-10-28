@@ -21,6 +21,10 @@ export default async function RootLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
   const session = await auth();
+  // Сессия с неудавшимся refresh уже мертва: SessionGuard сейчас её сбросит, а
+  // пока не рисуем шапку с навигацией — иначе она мелькает перед формой логина.
+  const expired = session?.error === "RefreshAccessTokenError";
+  const authed = !!session?.user && !expired;
 
   // Роль головы — свойство деплоя, не пользователя: тянем публично, чтобы бейдж
   // был верным и на странице логина (до токена).
@@ -33,7 +37,7 @@ export default async function RootLayout({
 
   let superuser = false;
   let roleLabel: string | undefined;
-  if (session?.accessToken) {
+  if (authed && session?.accessToken) {
     try {
       const me = await getMe();
       superuser = me.superuser;
@@ -54,12 +58,12 @@ export default async function RootLayout({
       </head>
       <body className="min-h-full">
           <TooltipProvider>
-            <SessionGuard expired={session?.error === "RefreshAccessTokenError"} />
+            <SessionGuard expired={expired} />
             <div className="flex min-h-screen flex-col">
               <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
                 <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:px-6">
                   <Link
-                    href={session?.user ? "/instances" : "/"}
+                    href={authed ? "/instances" : "/"}
                     className="flex shrink-0 items-center gap-2 font-semibold tracking-tight"
                   >
                     <span className="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
@@ -74,7 +78,7 @@ export default async function RootLayout({
                     </Badge>
                   </Link>
 
-                  {session?.user && (
+                  {authed && session?.user && (
                     <>
                       <div className="mx-1 h-6 w-px shrink-0 bg-border" />
                       {/* На узкой ширине шапка прокручивается по горизонтали;
