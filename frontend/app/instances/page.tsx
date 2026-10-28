@@ -16,7 +16,8 @@ export default async function InstancesPage() {
   try {
     const [list, me] = await Promise.all([listInstances(), getMe()]);
     instances = list;
-    canEdit = me.role === "admin";
+    // создавать инстансы и назначать проект может только superuser
+    canEdit = me.superuser;
   } catch (e) {
     error = e instanceof Error ? e.message : "Ошибка загрузки";
   }

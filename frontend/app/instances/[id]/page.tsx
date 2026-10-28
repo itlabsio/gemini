@@ -16,6 +16,7 @@ import { SslModeBadge } from "@/components/ssl-badge";
 import { SecretBadge } from "@/components/secret-badge";
 import { MiddleTruncate } from "@/components/middle-truncate";
 import { fmtPgVersion } from "@/lib/utils";
+import { can } from "@/lib/rbac";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -43,11 +44,12 @@ export default async function InstanceDetailPage({ params }: Props) {
     throw e;
   }
 
-  const [databases, me, activeRuns, settings] = await Promise.all([
+  const me = await getMe();
+  const [databases, activeRuns, settings] = await Promise.all([
     listDatabases(id).catch(() => []),
-    getMe(),
     listActiveRuns().catch(() => []),
-    getSettings().catch(() => null),
+    // настройки доступны только superuser'у; остальным подсказка недоступна
+    me.superuser ? getSettings().catch(() => null) : Promise.resolve(null),
   ]);
 
   return (
@@ -72,7 +74,7 @@ export default async function InstanceDetailPage({ params }: Props) {
             {instance.role}
           </Badge>
         </div>
-        {me.role === "admin" && (
+        {can(me, instance.project, "admin") && (
           <InstanceActions id={id} name={instance.name} />
         )}
       </div>
@@ -88,6 +90,10 @@ export default async function InstanceDetailPage({ params }: Props) {
                   className="font-mono text-xs"
                 />
               }
+            />
+            <Detail
+              label="Проект"
+              value={instance.project || <span className="text-muted-foreground">не назначен</span>}
             />
             <Detail label="SSL mode" value={<SslModeBadge mode={instance.ssl_mode} />} />
             {(instance.ssl_mode === "verify-ca" ||
@@ -156,8 +162,8 @@ export default async function InstanceDetailPage({ params }: Props) {
         defaultStorageSize={settings?.default_storage_size ?? ""}
         headRole={me.head_role}
         restoreMode={instance.restore_mode}
-        canEdit={me.role === "admin"}
-        canRun={me.role === "admin" || me.role === "operator"}
+        canEdit={can(me, instance.project, "admin")}
+        canRun={can(me, instance.project, "operator")}
       />
     </div>
   );

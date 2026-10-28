@@ -74,6 +74,8 @@ type instanceRequest struct {
 	VaultPasswordKey string `json:"vault_password_key"`
 	// Базы, которые discovery игнорирует (сверх всегда пропускаемой postgres).
 	ExcludedDatabases []string `json:"excluded_databases"`
+	// Project — проект-владелец. Меняет только superuser; nil — не менять.
+	Project *string `json:"project"`
 }
 
 // cleanDBNames нормализует список исключённых баз: тримит, отбрасывает пустые и
@@ -115,6 +117,10 @@ func (req instanceRequest) validate(defaultRole model.InstanceRole) (store.Insta
 		VaultPasswordKey: strings.TrimSpace(req.VaultPasswordKey),
 
 		ExcludedDatabases: cleanDBNames(req.ExcludedDatabases),
+	}
+	if req.Project != nil {
+		p := strings.TrimSpace(*req.Project)
+		in.Project = &p
 	}
 	if in.Role == "" {
 		in.Role = defaultRole
@@ -175,12 +181,11 @@ func (s *Server) defaultInstanceRole() model.InstanceRole {
 	return model.InstanceSource
 }
 
-// redactVaultCoords прячет координаты секрета в Vault от роли viewer: путь и роль
-// описывают устройство секрет-хранилища, наблюдателю журналов они не нужны.
-// operator/admin видят их — им это нужно для диагностики и правки инстанса.
+// redactVaultCoords прячет координаты секрета в Vault от viewer'а проекта: путь и
+// роль описывают устройство секрет-хранилища, наблюдателю журналов они не нужны.
+// operator/admin проекта и superuser видят их — для диагностики и правки инстанса.
 func redactVaultCoords(r *http.Request, inst *model.Instance) {
-	id, _ := auth.FromContext(r.Context())
-	if id.Role.AtLeast(auth.RoleOperator) {
+	if identity(r).Can(inst.Project, auth.RoleOperator) {
 		return
 	}
 	inst.VaultPath = ""
@@ -195,16 +200,21 @@ func (s *Server) listInstances(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	for i := range items {
-		redactVaultCoords(r, &items[i])
+	id := identity(r)
+	visible := items[:0]
+	for _, it := range items {
+		if !id.Can(it.Project, auth.RoleViewer) {
+			continue
+		}
+		redactVaultCoords(r, &it)
+		visible = append(visible, it)
 	}
-	writeJSON(w, http.StatusOK, items)
+	writeJSON(w, http.StatusOK, visible)
 }
 
 func (s *Server) getInstance(w http.ResponseWriter, r *http.Request) {
-	inst, err := s.d.Store.GetInstance(r.Context(), mux.Vars(r)["id"])
-	if err != nil {
-		writeStoreError(w, err)
+	inst, ok := s.authorizeInstance(w, r, mux.Vars(r)["id"], auth.RoleViewer)
+	if !ok {
 		return
 	}
 	redactVaultCoords(r, inst)
@@ -227,6 +237,9 @@ func (s *Server) createInstance(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if !s.projectExists(w, r, in.Project) {
+		return
+	}
 	id, _ := auth.FromContext(r.Context())
 	inst, err := s.d.Store.CreateInstance(r.Context(), in, id.Email)
 	if err != nil {
@@ -239,6 +252,10 @@ func (s *Server) createInstance(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
+	cur, ok := s.authorizeInstance(w, r, id, auth.RoleAdmin)
+	if !ok {
+		return
+	}
 	var req instanceRequest
 	if !decodeJSON(w, r, &req) {
 		return
@@ -254,6 +271,19 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Проект назначает/меняет только superuser: иначе admin проекта мог бы
+	// «передать» инстанс в чужой проект или забрать чужой.
+	if in.Project != nil && *in.Project != cur.Project {
+		if !identity(r).Superuser {
+			writeError(w, http.StatusForbidden, "only superuser can change the project of an instance")
+			return
+		}
+		if !s.projectExists(w, r, in.Project) {
+			return
+		}
+	} else {
+		in.Project = nil
+	}
 	inst, err := s.d.Store.UpdateInstance(r.Context(), id, in)
 	if err != nil {
 		writeStoreError(w, err)
@@ -265,6 +295,9 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
+	if _, ok := s.authorizeInstance(w, r, id, auth.RoleAdmin); !ok {
+		return
+	}
 	if err := s.d.Store.DeleteInstance(r.Context(), id); err != nil {
 		writeStoreError(w, err)
 		return
@@ -277,9 +310,8 @@ func (s *Server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 // их с таблицей databases.
 func (s *Server) discoverInstance(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	inst, err := s.d.Store.GetInstance(r.Context(), id)
-	if err != nil {
-		writeStoreError(w, err)
+	inst, ok := s.authorizeInstance(w, r, id, auth.RoleAdmin)
+	if !ok {
 		return
 	}
 	target, err := s.resolveDiscoveryTarget(r.Context(), inst)
@@ -311,9 +343,8 @@ func (s *Server) discoverInstance(w http.ResponseWriter, r *http.Request) {
 // кластера — кандидаты на владельца восстановленной базы в UI сопоставления.
 // ?login=true — только роли с LOGIN (пользователь restore базы, in_place_per_db).
 func (s *Server) listInstanceRoles(w http.ResponseWriter, r *http.Request) {
-	inst, err := s.d.Store.GetInstance(r.Context(), mux.Vars(r)["id"])
-	if err != nil {
-		writeStoreError(w, err)
+	inst, ok := s.authorizeInstance(w, r, mux.Vars(r)["id"], auth.RoleAdmin)
+	if !ok {
 		return
 	}
 	target, err := s.resolveDiscoveryTarget(r.Context(), inst)
@@ -390,6 +421,23 @@ func (s *Server) vaultSecretKeys(w http.ResponseWriter, r *http.Request) {
 		"guess_username_key": userKey,
 		"guess_password_key": passKey,
 	})
+}
+
+// projectExists отвечает 400, если указан несуществующий проект ("" / nil — ок).
+func (s *Server) projectExists(w http.ResponseWriter, r *http.Request, project *string) bool {
+	if project == nil || *project == "" {
+		return true
+	}
+	ok, err := s.d.Store.ProjectExists(r.Context(), *project)
+	if err != nil {
+		writeStoreError(w, err)
+		return false
+	}
+	if !ok {
+		writeError(w, http.StatusBadRequest, "unknown project "+*project)
+		return false
+	}
+	return true
 }
 
 func (s *Server) checkVault(ctx context.Context, in store.InstanceInput) error {

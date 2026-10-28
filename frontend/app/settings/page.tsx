@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/ui/page-header";
 
 export default async function SettingsPage() {
   const me = await getMe();
-  if (me.role !== "admin") redirect("/instances");
+  if (!me.superuser) redirect("/instances");
 
   const [settings, buckets] = await Promise.all([getSettings(), listS3Buckets()]);
 

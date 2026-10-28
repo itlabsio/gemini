@@ -5,8 +5,8 @@ import {
   listDatabases,
   listInstances,
   listMappings,
-  listPairings,
 } from "@/lib/api";
+import { can, projectsAtLeast } from "@/lib/rbac";
 import type { DatabaseMapping } from "@/lib/types";
 import { MappingEditor } from "@/components/mapping-editor";
 import { MappingActiveBadge } from "@/components/mapping-active-badge";
@@ -34,6 +34,7 @@ export default async function MappingPage() {
           dbs.map((d) => ({
             id: d.id,
             instanceId: i.id,
+            project: i.project,
             label: `${i.name}/${d.db_name}`,
           })),
         )
@@ -50,11 +51,17 @@ export default async function MappingPage() {
     error = e instanceof Error ? e.message : "Ошибка загрузки";
   }
 
-  const pairings = await listPairings().catch(() => []);
-  const hasSourcePairing = pairings.some(
-    (p) => p.peer_role === "source" && p.status === "active",
-  );
+  // Проекты, в которых можно сопоставлять: admin проекта (superuser — любой
+  // проект с target-инстансами). Инстансы без проекта сопоставлять нельзя.
+  const instanceProjects = [
+    ...new Set(instances.map((i) => i.project).filter(Boolean)),
+  ].sort();
+  const editableProjects = me.superuser
+    ? instanceProjects
+    : projectsAtLeast(me, "admin").filter((p) => instanceProjects.includes(p));
+  const hasSourcePairing = me.source_paired;
   const targetLabel = new Map(targets.map((t) => [t.id, t.label]));
+  const targetProject = new Map(targets.map((t) => [t.id, t.project]));
 
   return (
     <div className="flex flex-col gap-6">
@@ -84,9 +91,10 @@ export default async function MappingPage() {
 
       {error && <Alert variant="destructive">{error}</Alert>}
 
-      {me.role !== "admin" ? (
+      {editableProjects.length === 0 ? (
         <Alert variant="info">
-          Редактирование сопоставлений доступно роли admin
+          Редактирование сопоставлений доступно admin проекта (и superuser), если у
+          проекта есть target-инстансы
         </Alert>
       ) : !hasSourcePairing ? (
         <Alert variant="destructive">
@@ -97,7 +105,11 @@ export default async function MappingPage() {
           , затем вернитесь сюда за списком баз.
         </Alert>
       ) : (
-        <MappingEditor targets={targets} existing={existing} />
+        <MappingEditor
+          projects={editableProjects}
+          targets={targets}
+          existing={existing}
+        />
       )}
 
       <section className="flex flex-col gap-3">
@@ -135,7 +147,11 @@ export default async function MappingPage() {
                       targetLabel={
                         targetLabel.get(m.target_database_id) ?? m.target_database_id
                       }
-                      canUnlink={me.role === "admin"}
+                      canUnlink={can(
+                        me,
+                        targetProject.get(m.target_database_id),
+                        "admin",
+                      )}
                     />
                   </TableCell>
                 </TableRow>

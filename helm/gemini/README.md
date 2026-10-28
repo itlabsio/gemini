@@ -44,7 +44,7 @@
 | frontend.affinity | object | `{}` | affinity пода frontend |
 | frontend.podSecurityContext | object | `{"fsGroup":1001,"runAsGroup":1001,"runAsNonRoot":true,"runAsUser":1001,"seccompProfile":{"type":"RuntimeDefault"}}` | securityContext пода frontend. uid/gid зашиты в образе Next.js (1001). |
 | oidc.issuerUrl | string | `"https://keycloak.example.com/realms/gemini"` | URL issuer'а OIDC (realm Keycloak) |
-| oidc.clientId | string | `"gemini"` | Единый clientId frontend и backend: фронт логинится через него (code+PKCE),    backend проверяет по нему azp/aud и читает resource_access.<clientId>.roles    (client-роли ровно viewer / operator / admin). |
+| oidc.clientId | string | `"gemini"` | Единый clientId frontend и backend: фронт логинится через него (code+PKCE),    backend проверяет по нему azp/aud и читает client-роль superuser из resource_access.<clientId>.roles    и роли по проектам из claim groups (Full group path: /<проект>/<admin|developer|readonly>). |
 | oidc.existingSecret | string | `"gemini-oidc"` | k8s Secret для frontend (next-auth) с ключами:    KEYCLOAK_CLIENT_SECRET, AUTH_SECRET. Backend этот секрет не использует. |
 | ownDatabase.existingSecret | string | `"gemini-db-credentials"` | k8s Secret с ключом POSTGRES_URL (dsn собственной БД метаданных).    Чарт свою БД НЕ разворачивает — ожидается внешний PostgreSQL с расширением    pgcrypto (роль dsn должна иметь право CREATE EXTENSION либо pgcrypto    предустановлен). Миграции накатывает отдельный Job (helm hook). |
 | encryptionKey | object | `{"existingSecret":"gemini-encryption-key"}` | k8s Secret с ключом SECRET_ENCRYPTION_KEY (ровно 32 байта) для шифрования    plain-паролей подключений в собственной БД at rest. |

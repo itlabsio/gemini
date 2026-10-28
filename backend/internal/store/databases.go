@@ -59,17 +59,19 @@ func (s *Store) ListEnabledDatabases(ctx context.Context) ([]model.Database, err
 
 // ListPresentDatabases возвращает присутствующие базы всех инстансов, кроме
 // исключённых из discovery (postgres и instances.excluded_databases), —
-// независимо от enabled. Это список кандидатов для сопоставления на DR: решать,
+// независимо от enabled; project != "" — только базы инстансов этого проекта
+// (RBAC). Это список кандидатов для сопоставления на DR: решать,
 // восстанавливать ли базу, должна галка на Target, а не на Source.
-func (s *Store) ListPresentDatabases(ctx context.Context) ([]model.Database, error) {
+func (s *Store) ListPresentDatabases(ctx context.Context, project string) ([]model.Database, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+databaseCols+`
 		FROM databases d
 		WHERE d.present
+		  AND ($1::text = '' OR d.instance_id IN (SELECT id FROM instances WHERE project = $1::text))
 		  AND d.db_name <> 'postgres'
 		  AND d.db_name <> ALL (
 		      SELECT unnest(excluded_databases) FROM instances i WHERE i.id = d.instance_id)
-		ORDER BY d.db_name`)
+		ORDER BY d.db_name`, project)
 	if err != nil {
 		return nil, err
 	}

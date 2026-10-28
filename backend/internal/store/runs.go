@@ -84,7 +84,15 @@ type RunFilter struct {
 	Kind       model.RunKind
 	Status     model.RunStatus
 	Limit      int
+	// RestrictProjects ограничивает выборку прогонами баз инстансов из Projects
+	// (RBAC). Пустой Projects при RestrictProjects=true — не вернуть ничего.
+	RestrictProjects bool
+	Projects         []string
 }
+
+const runProjectScope = `database_id IN (
+	SELECT d.id FROM databases d JOIN instances i ON i.id = d.instance_id
+	WHERE i.project = ANY(`
 
 // ListRuns возвращает историю прогонов с фильтрами.
 func (s *Store) ListRuns(ctx context.Context, f RunFilter) ([]model.BackupRun, error) {
@@ -102,6 +110,10 @@ func (s *Store) ListRuns(ctx context.Context, f RunFilter) ([]model.BackupRun, e
 	if f.Status != "" {
 		args = append(args, f.Status)
 		where = append(where, "status = $"+itoa(len(args)))
+	}
+	if f.RestrictProjects {
+		args = append(args, nonNil(f.Projects))
+		where = append(where, runProjectScope+"$"+itoa(len(args))+"))")
 	}
 	if len(where) > 0 {
 		q += " WHERE " + strings.Join(where, " AND ")
@@ -134,6 +146,38 @@ func (s *Store) ListRuns(ctx context.Context, f RunFilter) ([]model.BackupRun, e
 		return nil, err
 	}
 	return out, nil
+}
+
+func nonNil(v []string) []string {
+	if v == nil {
+		return []string{}
+	}
+	return v
+}
+
+// ListActiveRunsInProjects — прогоны pending/running баз инстансов из projects
+// (для UI; RBAC). all=true — без ограничения по проектам (superuser).
+func (s *Store) ListActiveRunsInProjects(ctx context.Context, projects []string, all bool) ([]model.BackupRun, error) {
+	q := `SELECT ` + runCols + ` FROM backup_runs WHERE status IN ('pending','running')`
+	args := []any{}
+	if !all {
+		args = append(args, nonNil(projects))
+		q += " AND " + runProjectScope + "$1))"
+	}
+	rows, err := s.pool.Query(ctx, q+` ORDER BY created_at`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.BackupRun{}
+	for rows.Next() {
+		r, err := scanRun(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *r)
+	}
+	return out, rows.Err()
 }
 
 // GetRun возвращает один прогон.

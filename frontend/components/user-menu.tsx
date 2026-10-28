@@ -26,7 +26,7 @@ export function UserMenu({ email, role }: { email: string; role?: string }) {
         <DropdownMenuLabel className="flex flex-col gap-1">
           <span className="truncate text-sm font-medium">{email}</span>
           {role && (
-            <Badge variant="secondary" className="w-fit capitalize">
+            <Badge variant="secondary" className="h-auto w-fit max-w-full whitespace-normal">
               {role}
             </Badge>
           )}

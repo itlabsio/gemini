@@ -1,7 +1,7 @@
 // Package api собирает HTTP-роутер головы Gemini.
 //
 // Три класса эндпоинтов:
-//   - /api/*      — для людей: OIDC-мидлварь + проверка роли на каждый обработчик;
+//   - /api/*      — для людей: OIDC-мидлварь + RBAC (superuser / роль в проекте инстанса);
 //   - /api/config — публичный: роль головы для шелла фронта (бейдж на логине);
 //   - /peer/*, /webhook/* — для второй головы: HMAC-подпись (peer.Verifier);
 //   - /pairing/exchange — публичный (код одноразовый);
@@ -61,48 +61,52 @@ func NewRouter(d Deps) http.Handler {
 
 	apiR.HandleFunc("/me", s.me).Methods(http.MethodGet)
 
-	apiR.HandleFunc("/instances", auth.RequireRole(auth.RoleViewer, s.listInstances)).Methods(http.MethodGet)
-	apiR.HandleFunc("/instances", auth.RequireRole(auth.RoleAdmin, s.createInstance)).Methods(http.MethodPost)
-	apiR.HandleFunc("/instances/{id}", auth.RequireRole(auth.RoleViewer, s.getInstance)).Methods(http.MethodGet)
-	apiR.HandleFunc("/instances/{id}", auth.RequireRole(auth.RoleAdmin, s.updateInstance)).Methods(http.MethodPut)
-	apiR.HandleFunc("/instances/{id}", auth.RequireRole(auth.RoleAdmin, s.deleteInstance)).Methods(http.MethodDelete)
-	apiR.HandleFunc("/instances/{id}/discover", auth.RequireRole(auth.RoleAdmin, s.discoverInstance)).Methods(http.MethodPost)
-	apiR.HandleFunc("/instances/{id}/databases", auth.RequireRole(auth.RoleViewer, s.listDatabases)).Methods(http.MethodGet)
+	apiR.HandleFunc("/projects", auth.RequireSuperuser(s.listProjects)).Methods(http.MethodGet)
+	apiR.HandleFunc("/projects", auth.RequireSuperuser(s.createProject)).Methods(http.MethodPost)
+	apiR.HandleFunc("/projects/{name}", auth.RequireSuperuser(s.deleteProject)).Methods(http.MethodDelete)
+
+	apiR.HandleFunc("/instances", auth.RequireAnyProject(auth.RoleViewer, s.listInstances)).Methods(http.MethodGet)
+	apiR.HandleFunc("/instances", auth.RequireSuperuser(s.createInstance)).Methods(http.MethodPost)
+	apiR.HandleFunc("/instances/{id}", auth.RequireAnyProject(auth.RoleViewer, s.getInstance)).Methods(http.MethodGet)
+	apiR.HandleFunc("/instances/{id}", auth.RequireAnyProject(auth.RoleAdmin, s.updateInstance)).Methods(http.MethodPut)
+	apiR.HandleFunc("/instances/{id}", auth.RequireAnyProject(auth.RoleAdmin, s.deleteInstance)).Methods(http.MethodDelete)
+	apiR.HandleFunc("/instances/{id}/discover", auth.RequireAnyProject(auth.RoleAdmin, s.discoverInstance)).Methods(http.MethodPost)
+	apiR.HandleFunc("/instances/{id}/databases", auth.RequireAnyProject(auth.RoleViewer, s.listDatabases)).Methods(http.MethodGet)
 
 	// Имена полей секрета Vault для сопоставления в UI (значения не отдаются).
-	apiR.HandleFunc("/vault/secret-keys", auth.RequireRole(auth.RoleAdmin, s.vaultSecretKeys)).Methods(http.MethodPost)
+	apiR.HandleFunc("/vault/secret-keys", auth.RequireAnyProject(auth.RoleAdmin, s.vaultSecretKeys)).Methods(http.MethodPost)
 
-	apiR.HandleFunc("/databases/{id}", auth.RequireRole(auth.RoleAdmin, s.patchDatabase)).Methods(http.MethodPatch)
-	apiR.HandleFunc("/databases/{id}/run", auth.RequireRole(auth.RoleOperator, s.runDatabase)).Methods(http.MethodPost)
+	apiR.HandleFunc("/databases/{id}", auth.RequireAnyProject(auth.RoleAdmin, s.patchDatabase)).Methods(http.MethodPatch)
+	apiR.HandleFunc("/databases/{id}/run", auth.RequireAnyProject(auth.RoleOperator, s.runDatabase)).Methods(http.MethodPost)
 
-	apiR.HandleFunc("/runs", auth.RequireRole(auth.RoleViewer, s.listRuns)).Methods(http.MethodGet)
-	apiR.HandleFunc("/runs/active", auth.RequireRole(auth.RoleViewer, s.listActiveRuns)).Methods(http.MethodGet)
-	apiR.HandleFunc("/runs/{id}", auth.RequireRole(auth.RoleViewer, s.getRun)).Methods(http.MethodGet)
-	apiR.HandleFunc("/runs/{id}/cancel", auth.RequireRole(auth.RoleOperator, s.cancelRun)).Methods(http.MethodPost)
+	apiR.HandleFunc("/runs", auth.RequireAnyProject(auth.RoleViewer, s.listRuns)).Methods(http.MethodGet)
+	apiR.HandleFunc("/runs/active", auth.RequireAnyProject(auth.RoleViewer, s.listActiveRuns)).Methods(http.MethodGet)
+	apiR.HandleFunc("/runs/{id}", auth.RequireAnyProject(auth.RoleViewer, s.getRun)).Methods(http.MethodGet)
+	apiR.HandleFunc("/runs/{id}/cancel", auth.RequireAnyProject(auth.RoleOperator, s.cancelRun)).Methods(http.MethodPost)
 
-	apiR.HandleFunc("/pairings", auth.RequireRole(auth.RoleViewer, s.listPairings)).Methods(http.MethodGet)
-	apiR.HandleFunc("/pairings/{id}", auth.RequireRole(auth.RoleAdmin, s.deletePairing)).Methods(http.MethodDelete)
-	apiR.HandleFunc("/pairings/{id}/revoke", auth.RequireRole(auth.RoleAdmin, s.revokePairing)).Methods(http.MethodPost)
+	apiR.HandleFunc("/pairings", auth.RequireSuperuser(s.listPairings)).Methods(http.MethodGet)
+	apiR.HandleFunc("/pairings/{id}", auth.RequireSuperuser(s.deletePairing)).Methods(http.MethodDelete)
+	apiR.HandleFunc("/pairings/{id}/revoke", auth.RequireSuperuser(s.revokePairing)).Methods(http.MethodPost)
 
-	apiR.HandleFunc("/settings", auth.RequireRole(auth.RoleViewer, s.getSettings)).Methods(http.MethodGet)
-	apiR.HandleFunc("/settings", auth.RequireRole(auth.RoleAdmin, s.putSettings)).Methods(http.MethodPut)
+	apiR.HandleFunc("/settings", auth.RequireSuperuser(s.getSettings)).Methods(http.MethodGet)
+	apiR.HandleFunc("/settings", auth.RequireSuperuser(s.putSettings)).Methods(http.MethodPut)
 
-	apiR.HandleFunc("/s3-buckets", auth.RequireRole(auth.RoleAdmin, s.listS3Buckets)).Methods(http.MethodGet)
-	apiR.HandleFunc("/s3-buckets", auth.RequireRole(auth.RoleAdmin, s.createS3Bucket)).Methods(http.MethodPost)
-	apiR.HandleFunc("/s3-buckets/{id}", auth.RequireRole(auth.RoleAdmin, s.updateS3Bucket)).Methods(http.MethodPut)
-	apiR.HandleFunc("/s3-buckets/{id}", auth.RequireRole(auth.RoleAdmin, s.deleteS3Bucket)).Methods(http.MethodDelete)
-	apiR.HandleFunc("/s3-buckets/{id}/test", auth.RequireRole(auth.RoleAdmin, s.testS3Bucket)).Methods(http.MethodPost)
+	apiR.HandleFunc("/s3-buckets", auth.RequireSuperuser(s.listS3Buckets)).Methods(http.MethodGet)
+	apiR.HandleFunc("/s3-buckets", auth.RequireSuperuser(s.createS3Bucket)).Methods(http.MethodPost)
+	apiR.HandleFunc("/s3-buckets/{id}", auth.RequireSuperuser(s.updateS3Bucket)).Methods(http.MethodPut)
+	apiR.HandleFunc("/s3-buckets/{id}", auth.RequireSuperuser(s.deleteS3Bucket)).Methods(http.MethodDelete)
+	apiR.HandleFunc("/s3-buckets/{id}/test", auth.RequireSuperuser(s.testS3Bucket)).Methods(http.MethodPost)
 
 	if d.Cfg.IsSource() {
-		apiR.HandleFunc("/pairing/issue-code", auth.RequireRole(auth.RoleAdmin, s.issuePairingCode)).Methods(http.MethodPost)
+		apiR.HandleFunc("/pairing/issue-code", auth.RequireSuperuser(s.issuePairingCode)).Methods(http.MethodPost)
 	}
 	if d.Cfg.IsTarget() {
-		apiR.HandleFunc("/pairing/init", auth.RequireRole(auth.RoleAdmin, s.initPairing)).Methods(http.MethodPost)
-		apiR.HandleFunc("/instances/{id}/roles", auth.RequireRole(auth.RoleAdmin, s.listInstanceRoles)).Methods(http.MethodGet)
-		apiR.HandleFunc("/mapping/candidates", auth.RequireRole(auth.RoleViewer, s.mappingCandidates)).Methods(http.MethodGet)
-		apiR.HandleFunc("/mapping", auth.RequireRole(auth.RoleViewer, s.listMappings)).Methods(http.MethodGet)
-		apiR.HandleFunc("/mapping", auth.RequireRole(auth.RoleAdmin, s.saveMapping)).Methods(http.MethodPost)
-		apiR.HandleFunc("/mapping/{id}", auth.RequireRole(auth.RoleAdmin, s.deleteMapping)).Methods(http.MethodDelete)
+		apiR.HandleFunc("/pairing/init", auth.RequireSuperuser(s.initPairing)).Methods(http.MethodPost)
+		apiR.HandleFunc("/instances/{id}/roles", auth.RequireAnyProject(auth.RoleAdmin, s.listInstanceRoles)).Methods(http.MethodGet)
+		apiR.HandleFunc("/mapping/candidates", auth.RequireAnyProject(auth.RoleViewer, s.mappingCandidates)).Methods(http.MethodGet)
+		apiR.HandleFunc("/mapping", auth.RequireAnyProject(auth.RoleViewer, s.listMappings)).Methods(http.MethodGet)
+		apiR.HandleFunc("/mapping", auth.RequireAnyProject(auth.RoleAdmin, s.saveMapping)).Methods(http.MethodPost)
+		apiR.HandleFunc("/mapping/{id}", auth.RequireAnyProject(auth.RoleAdmin, s.deleteMapping)).Methods(http.MethodDelete)
 	}
 
 	// --- Публичный: обмен pairing (одноразовый код) ---

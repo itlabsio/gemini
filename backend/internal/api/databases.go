@@ -7,6 +7,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"gl.sdvor.com/devops/docker/gemini/backend/internal/auth"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/k8s"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/operator"
@@ -15,6 +16,9 @@ import (
 )
 
 func (s *Server) listDatabases(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.authorizeInstance(w, r, mux.Vars(r)["id"], auth.RoleViewer); !ok {
+		return
+	}
 	dbs, err := s.d.Store.ListDatabases(r.Context(), mux.Vars(r)["id"])
 	if err != nil {
 		writeStoreError(w, err)
@@ -39,6 +43,9 @@ type databasePatchRequest struct {
 // schedule_cron — только на Source, restore-креды — только на Target.
 func (s *Server) patchDatabase(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
+	if _, _, ok := s.authorizeDatabase(w, r, id, auth.RoleAdmin); !ok {
+		return
+	}
 	var req databasePatchRequest
 	if !decodeJSON(w, r, &req) {
 		return
@@ -119,9 +126,8 @@ func (s *Server) patchDatabase(w http.ResponseWriter, r *http.Request) {
 // Если для базы уже есть активный Job — запуск запрещён (409).
 func (s *Server) runDatabase(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	db, err := s.d.Store.GetDatabase(r.Context(), id)
-	if err != nil {
-		writeStoreError(w, err)
+	db, _, ok := s.authorizeDatabase(w, r, id, auth.RoleOperator)
+	if !ok {
 		return
 	}
 	idn, _ := ctxIdentity(r)

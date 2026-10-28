@@ -1,29 +1,6 @@
 import NextAuth from "next-auth";
 import Keycloak from "next-auth/providers/keycloak";
 
-export type Role = "viewer" | "operator" | "admin";
-
-const ROLE_RANK: Record<Role, number> = { viewer: 1, operator: 2, admin: 3 };
-
-/**
- * Роль берётся ТОЛЬКО из resource_access.<clientId>.roles (client-роли клиента
- * головы). realm-роли и groups не учитываются — иначе realm-роль "admin" у
- * realm-администратора поднимала бы его и здесь.
- */
-function resolveRole(profile: unknown): Role | null {
-  const p = (profile ?? {}) as Record<string, unknown>;
-  const clientId = process.env.KEYCLOAK_CLIENT_ID!;
-  const resource = p.resource_access as Record<string, { roles?: string[] }> | undefined;
-
-  let best: Role | null = null;
-  for (const name of resource?.[clientId]?.roles ?? []) {
-    if (name in ROLE_RANK && (!best || ROLE_RANK[name as Role] > ROLE_RANK[best])) {
-      best = name as Role;
-    }
-  }
-  return best;
-}
-
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   providers: [
@@ -34,19 +11,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    async signIn({ profile }) {
-      // Мягкий гейт: если client-роли в profile (ID token / userinfo) вообще нет —
-      // не блокируем, решает backend по access-токену. Если есть — нужна валидная.
-      const p = (profile ?? {}) as Record<string, unknown>;
-      if (p.resource_access == null) return true;
-      return resolveRole(profile) !== null;
-    },
-    async jwt({ token, account, profile }) {
+    // Права (superuser / роли по проектам из groups) решает backend по
+    // access-токену; фронт берёт их из /api/me.
+    async jwt({ token, account }) {
       if (account) {
         token.accessToken = account.access_token;
         token.refreshToken = account.refresh_token;
         token.expiresAt = account.expires_at;
-        token.role = resolveRole(profile) ?? undefined;
       }
       if (Date.now() < (token.expiresAt as number) * 1000 - 30_000) return token;
       return await refreshAccessToken(token);
@@ -54,7 +25,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       session.accessToken = token.accessToken as string | undefined;
       session.error = token.error as string | undefined;
-      session.role = token.role as Role | undefined;
       return session;
     },
   },
@@ -88,14 +58,9 @@ async function refreshAccessToken(token: Record<string, unknown>) {
   }
 }
 
-export function roleAtLeast(role: Role | undefined, min: Role): boolean {
-  return !!role && ROLE_RANK[role] >= ROLE_RANK[min];
-}
-
 declare module "next-auth" {
   interface Session {
     accessToken?: string;
     error?: string;
-    role?: Role;
   }
 }

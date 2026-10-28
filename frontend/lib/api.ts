@@ -8,6 +8,7 @@ import type {
   HeadRole,
   Instance,
   Me,
+  Project,
   ResourceSpec,
   S3Bucket,
   Settings,
@@ -78,12 +79,21 @@ export const deletePairing = (id: string) =>
 export const revokePairing = (id: string) =>
   apiFetch<HeadPairing>(`/api/pairings/${id}/revoke`, { method: "POST" });
 export const listMappings = () => apiFetch<DatabaseMapping[]>("/api/mapping");
-export const mappingCandidates = () =>
-  apiFetch<{ pairing_id: string; candidates: Candidate[] }>("/api/mapping/candidates");
+export const mappingCandidates = (project: string) =>
+  apiFetch<{ pairing_id: string; candidates: Candidate[] }>(
+    `/api/mapping/candidates?project=${encodeURIComponent(project)}`,
+  );
+export const listProjects = () => apiFetch<Project[]>("/api/projects");
+export const createProject = (name: string) =>
+  apiFetch<Project>("/api/projects", { method: "POST", body: JSON.stringify({ name }) });
+export const deleteProject = (name: string) =>
+  apiFetch<void>(`/api/projects/${encodeURIComponent(name)}`, { method: "DELETE" });
 
 // --- запись ---
 export interface InstancePayload {
   role?: string;
+  /** Только superuser; не передан — не менять. */
+  project?: string;
   name: string;
   host: string;
   port: number;

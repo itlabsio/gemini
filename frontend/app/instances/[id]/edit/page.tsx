@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { ApiError, getInstance, getMe, listInstances } from "@/lib/api";
+import { ApiError, getInstance, getMe, listInstances, listProjects } from "@/lib/api";
+import { can } from "@/lib/rbac";
 import { InstanceForm } from "@/components/instance-form";
 import { caDonorsFrom } from "@/lib/ca-donors";
 
@@ -11,7 +12,6 @@ export default async function EditInstancePage({ params }: Props) {
   const { id } = await params;
 
   const me = await getMe();
-  if (me.role !== "admin") notFound();
 
   let instance;
   try {
@@ -21,7 +21,12 @@ export default async function EditInstancePage({ params }: Props) {
     throw e;
   }
 
-  const instances = await listInstances().catch(() => []);
+  if (!can(me, instance.project, "admin")) notFound();
+
+  const [instances, projects] = await Promise.all([
+    listInstances().catch(() => []),
+    me.superuser ? listProjects().catch(() => []) : Promise.resolve([]),
+  ]);
 
   return (
     <InstanceForm
@@ -29,6 +34,7 @@ export default async function EditInstancePage({ params }: Props) {
       vaultEnabled={me.vault_enabled}
       headRole={me.head_role}
       caDonors={caDonorsFrom(instances, id)}
+      projects={me.superuser ? projects.map((p) => p.name) : undefined}
     />
   );
 }

@@ -68,6 +68,19 @@ func (s *Store) ListMappings(ctx context.Context) ([]model.DatabaseMapping, erro
 	return out, rows.Err()
 }
 
+// GetMapping возвращает сопоставление по id.
+func (s *Store) GetMapping(ctx context.Context, id string) (*model.DatabaseMapping, error) {
+	return scanMapping(s.pool.QueryRow(ctx,
+		`SELECT `+mappingCols+` FROM database_mappings WHERE id = $1`, id))
+}
+
+// MappingByPairingExternal — сопоставление по ключу upsert'а (pairing, source external id).
+func (s *Store) MappingByPairingExternal(ctx context.Context, pairingID, externalID string) (*model.DatabaseMapping, error) {
+	return scanMapping(s.pool.QueryRow(ctx,
+		`SELECT `+mappingCols+` FROM database_mappings
+		 WHERE head_pairing_id = $1 AND source_database_external_id = $2`, pairingID, externalID))
+}
+
 // MappingBySourceExternalID нужен обработчику webhook backup-ready на DR.
 func (s *Store) MappingBySourceExternalID(ctx context.Context, externalID string) (*model.DatabaseMapping, error) {
 	return scanMapping(s.pool.QueryRow(ctx,

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"gl.sdvor.com/devops/docker/gemini/backend/internal/auth"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/operator"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/store"
@@ -16,11 +17,14 @@ import (
 func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	limit, _ := strconv.Atoi(q.Get("limit"))
+	id := identity(r)
 	runs, err := s.d.Store.ListRuns(r.Context(), store.RunFilter{
-		DatabaseID: q.Get("database_id"),
-		Kind:       model.RunKind(q.Get("kind")),
-		Status:     model.RunStatus(q.Get("status")),
-		Limit:      limit,
+		DatabaseID:       q.Get("database_id"),
+		Kind:             model.RunKind(q.Get("kind")),
+		Status:           model.RunStatus(q.Get("status")),
+		Limit:            limit,
+		RestrictProjects: !id.Superuser,
+		Projects:         id.ProjectsAtLeast(auth.RoleViewer),
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -33,7 +37,8 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 // на странице инстанса опрашивает его, чтобы показывать «выполняется» и
 // блокировать кнопку запуска, пока бэкап не закончится.
 func (s *Server) listActiveRuns(w http.ResponseWriter, r *http.Request) {
-	runs, err := s.d.Store.ListActiveRuns(r.Context(), 0)
+	id := identity(r)
+	runs, err := s.d.Store.ListActiveRunsInProjects(r.Context(), id.ProjectsAtLeast(auth.RoleViewer), id.Superuser)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -47,12 +52,29 @@ func (s *Server) getRun(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	if !s.authorizeRun(w, r, run, auth.RoleViewer) {
+		return
+	}
 	writeJSON(w, http.StatusOK, run)
+}
+
+// authorizeRun проверяет доступ к прогону через проект инстанса его базы.
+func (s *Server) authorizeRun(w http.ResponseWriter, r *http.Request, run *model.BackupRun, min auth.Role) bool {
+	_, _, ok := s.authorizeDatabase(w, r, run.DatabaseID, min)
+	return ok
 }
 
 // cancelRun — остановка активного прогона: Job удаляется, прогон → failed.
 func (s *Server) cancelRun(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
+	cur, err := s.d.Store.GetRun(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.authorizeRun(w, r, cur, auth.RoleOperator) {
+		return
+	}
 	idn, _ := ctxIdentity(r)
 	run, err := s.d.Operator.CancelRun(r.Context(), id, idn)
 	if errors.Is(err, operator.ErrRunNotActive) {

@@ -91,8 +91,9 @@ oidc:
   # -- URL issuer'а OIDC (realm Keycloak)
   issuerUrl: https://keycloak.example.com/realms/gemini
   # -- Единый clientId frontend и backend: фронт логинится через него (code+PKCE),
-  #    backend проверяет по нему azp/aud и читает resource_access.<clientId>.roles
-  #    (client-роли ровно viewer / operator / admin).
+  #    backend проверяет по нему azp/aud и читает client-роль superuser из
+  #    resource_access.<clientId>.roles, а роли по проектам — из claim groups
+  #    (Full group path: /<проект>/<admin|developer|readonly>).
   clientId: gemini
   # -- k8s Secret для frontend (next-auth) с ключами:
   #    KEYCLOAK_CLIENT_SECRET, AUTH_SECRET. Backend этот секрет не использует.

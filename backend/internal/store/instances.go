@@ -27,12 +27,15 @@ type InstanceInput struct {
 	VaultRole         string
 	VaultUsernameKey  string
 	VaultPasswordKey  string
+	// Project — проект-владелец. При создании пусто → NULL; при обновлении nil
+	// оставляет текущий, "" снимает привязку. Права на смену проверяет API.
+	Project *string
 }
 
 // instanceCols — только адресная часть, из таблицы instances.
 // Дескриптор кред подтягивается join'ом (см. instanceSelect); зашифрованный
 // пароль в этих выборках не участвует НИКОГДА — он читается лишь Credentials().
-const instanceCols = `i.id, i.role, i.name, i.host, i.port, i.restore_mode,
+const instanceCols = `i.id, i.role, i.name, COALESCE(i.project, ''), i.host, i.port, i.restore_mode,
 	i.ssl_mode, i.ssl_root_cert, i.discovery_db, i.excluded_databases, i.server_version_num,
 	i.created_by, i.created_at, i.updated_at,
 	c.auth_type, c.plain_username,
@@ -43,7 +46,7 @@ const instanceSelect = `SELECT ` + instanceCols + `
 
 func scanInstance(row pgx.Row) (*model.Instance, error) {
 	var i model.Instance
-	err := row.Scan(&i.ID, &i.Role, &i.Name, &i.Host, &i.Port, &i.RestoreMode,
+	err := row.Scan(&i.ID, &i.Role, &i.Name, &i.Project, &i.Host, &i.Port, &i.RestoreMode,
 		&i.SSLMode, &i.SSLRootCert, &i.DiscoveryDB, &i.ExcludedDatabases, &i.ServerVersionNum,
 		&i.CreatedBy, &i.CreatedAt, &i.UpdatedAt,
 		&i.AuthType, &i.PlainUsername,
@@ -55,6 +58,13 @@ func scanInstance(row pgx.Row) (*model.Instance, error) {
 		i.ExcludedDatabases = []string{}
 	}
 	return &i, nil
+}
+
+func derefStr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 
 // excludedArg — nil-слайс уехал бы в NULL и нарушил NOT NULL колонки; пустой
@@ -190,11 +200,11 @@ func (s *Store) CreateInstance(ctx context.Context, in InstanceInput, createdBy 
 
 	var id string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO instances (role, name, host, port, restore_mode, ssl_mode, ssl_root_cert, discovery_db, excluded_databases, created_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		INSERT INTO instances (role, name, host, port, restore_mode, ssl_mode, ssl_root_cert, discovery_db, excluded_databases, created_by, project)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NULLIF($11,''))
 		RETURNING id`,
 		in.Role, in.Name, in.Host, in.Port, in.RestoreMode, in.SSLMode, in.SSLRootCert, in.DiscoveryDB,
-		excludedArg(in.ExcludedDatabases), createdBy,
+		excludedArg(in.ExcludedDatabases), createdBy, derefStr(in.Project),
 	).Scan(&id); err != nil {
 		return nil, mapErr(err)
 	}
@@ -241,10 +251,11 @@ func (s *Store) UpdateInstance(ctx context.Context, id string, in InstanceInput)
 
 	ct, err := tx.Exec(ctx, `
 		UPDATE instances SET role=$2, name=$3, host=$4, port=$5, ssl_mode=$6, ssl_root_cert=$7,
-			discovery_db=$8, excluded_databases=$9, restore_mode=$10
+			discovery_db=$8, excluded_databases=$9, restore_mode=$10,
+			project = CASE WHEN $11::boolean THEN NULLIF($12,'') ELSE project END
 		WHERE id=$1`,
 		id, in.Role, in.Name, in.Host, in.Port, in.SSLMode, in.SSLRootCert, in.DiscoveryDB,
-		excludedArg(in.ExcludedDatabases), in.RestoreMode)
+		excludedArg(in.ExcludedDatabases), in.RestoreMode, in.Project != nil, derefStr(in.Project))
 	if err != nil {
 		return nil, mapErr(err)
 	}

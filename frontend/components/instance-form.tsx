@@ -38,12 +38,15 @@ export function InstanceForm({
   vaultEnabled,
   headRole,
   caDonors = [],
+  projects,
 }: {
   initial?: Instance;
   vaultEnabled: boolean;
   headRole: HeadRole;
   /** Инстансы этой головы с кастомным CA — источники для копирования PEM. */
   caDonors?: { id: string; name: string; ssl_root_cert: string }[];
+  /** Доступные проекты; передаются только superuser'у — остальные проект не меняют. */
+  projects?: string[];
 }) {
   const router = useRouter();
   const editing = !!initial;
@@ -53,6 +56,7 @@ export function InstanceForm({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  const [project, setProject] = useState(initial?.project ?? "");
   const [sslMode, setSslMode] = useState(initial?.ssl_mode ?? "verify-full");
   const verifyMode = sslMode === "verify-ca" || sslMode === "verify-full";
   // Кастомный CA нужен только self-hosted инстансам со своим сертификатом; для
@@ -80,6 +84,7 @@ export function InstanceForm({
   function onSubmit(fd: FormData) {
     setError(null);
     const payload = {
+      project: projects ? project : undefined,
       name: String(fd.get("name") ?? ""),
       host: String(fd.get("host") ?? ""),
       port: Number(fd.get("port") ?? 5432),
@@ -142,6 +147,30 @@ export function InstanceForm({
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-5">
+            {projects && (
+              <Field
+                label="Проект"
+                hint="Инстансом управляют только участники проекта. Без проекта — только superuser"
+              >
+                <Select
+                  value={project || "none"}
+                  onValueChange={(v) => setProject(v === "none" ? "" : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— не назначен —</SelectItem>
+                    {projects.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {p}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            )}
+
             <Field label="Имя" htmlFor="name">
               <Input
                 id="name"

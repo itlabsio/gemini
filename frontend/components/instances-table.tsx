@@ -23,6 +23,7 @@ export function InstancesTable({ instances }: { instances: Instance[] }) {
         <TableHeader>
           <TableRow>
             <TableHead>Инстанс</TableHead>
+            <TableHead>Проект</TableHead>
             <TableHead>Роль</TableHead>
             <TableHead>Хост</TableHead>
             <TableHead>Секрет</TableHead>
@@ -45,6 +46,13 @@ export function InstancesTable({ instances }: { instances: Instance[] }) {
                   >
                     {i.name}
                   </Link>
+                </TableCell>
+                <TableCell>
+                  {i.project ? (
+                    i.project
+                  ) : (
+                    <span className="text-muted-foreground">не назначен</span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <Badge

@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getMe, listPairings } from "@/lib/api";
 import type { HeadPairing } from "@/lib/types";
 import { IssueCodePanel, InitPairingPanel } from "@/components/pairing-panels";
@@ -8,6 +9,7 @@ import { Alert } from "@/components/ui/alert";
 
 export default async function PairingPage() {
   const me = await getMe();
+  if (!me.superuser) redirect("/instances");
   let pairings: HeadPairing[] = [];
   let error: string | null = null;
   try {
@@ -47,26 +49,22 @@ export default async function PairingPage() {
         </Alert>
       )}
 
-      {me.role === "admin" ? (
-        me.head_role === "source" ? (
-          <IssueCodePanel
-            lastIssuedAt={pairings
-              .filter((p) => p.status === "pending")
-              .map((p) => p.created_at)
-              .sort()
-              .at(-1)}
-          />
-        ) : (
-          <InitPairingPanel />
-        )
+      {me.head_role === "source" ? (
+        <IssueCodePanel
+          lastIssuedAt={pairings
+            .filter((p) => p.status === "pending")
+            .map((p) => p.created_at)
+            .sort()
+            .at(-1)}
+        />
       ) : (
-        <Alert variant="info">Управление pairing доступно роли admin</Alert>
+        <InitPairingPanel />
       )}
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">Существующие связи</h2>
         {error && <Alert variant="destructive">{error}</Alert>}
-        <PairingsTable pairings={pairings} canDelete={me.role === "admin"} />
+        <PairingsTable pairings={pairings} canDelete />
       </section>
     </div>
   );

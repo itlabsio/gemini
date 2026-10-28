@@ -31,10 +31,17 @@ export default async function RootLayout({
     /* backend недоступен — покажем базовый layout */
   }
 
-  let role: string | undefined;
+  let superuser = false;
+  let roleLabel: string | undefined;
   if (session?.accessToken) {
     try {
-      role = (await getMe()).role;
+      const me = await getMe();
+      superuser = me.superuser;
+      roleLabel = me.superuser
+        ? "superuser"
+        : Object.entries(me.projects ?? {})
+            .map(([p, r]) => `${p}: ${r}`)
+            .join(", ");
     } catch {
       /* backend недоступен — покажем базовый layout */
     }
@@ -73,12 +80,12 @@ export default async function RootLayout({
                       {/* На узкой ширине шапка прокручивается по горизонтали;
                           логотип и меню аккаунта остаются на месте. */}
                       <div className="min-w-0 flex-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                        <Nav headRole={headRole} role={role} />
+                        <Nav headRole={headRole} superuser={superuser} />
                       </div>
                       <div className="shrink-0">
                         <UserMenu
                           email={session.user.email ?? "—"}
-                          role={role}
+                          role={roleLabel}
                         />
                       </div>
                     </>

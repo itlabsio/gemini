@@ -11,11 +11,11 @@ import {
 } from "@/lib/api";
 import type { Candidate } from "@/lib/types";
 
-export async function loadCandidatesAction(): Promise<
+export async function loadCandidatesAction(project: string): Promise<
   { ok: true; pairingId: string; candidates: Candidate[] } | { ok: false; error: string }
 > {
   try {
-    const res = await mappingCandidates();
+    const res = await mappingCandidates(project);
     return { ok: true, pairingId: res.pairing_id, candidates: res.candidates };
   } catch (e) {
     return { ok: false, error: e instanceof ApiError ? `${e.status}: ${e.message}` : String(e) };

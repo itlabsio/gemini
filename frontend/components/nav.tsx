@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Database,
+  FolderKanban,
   GitCompareArrows,
   Link2,
   ScrollText,
@@ -17,13 +18,14 @@ interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
-  show?: (ctx: { headRole: HeadRole; role?: string }) => boolean;
+  show?: (ctx: { headRole: HeadRole; superuser: boolean }) => boolean;
 }
 
 const ITEMS: NavItem[] = [
   { href: "/instances", label: "Инстансы", icon: Database },
   { href: "/runs", label: "Журнал", icon: ScrollText },
-  { href: "/pairing", label: "Pairing", icon: Link2 },
+  { href: "/pairing", label: "Pairing", icon: Link2, show: ({ superuser }) => superuser },
+  { href: "/projects", label: "Проекты", icon: FolderKanban, show: ({ superuser }) => superuser },
   {
     href: "/mapping",
     label: "Сопоставление",
@@ -34,16 +36,16 @@ const ITEMS: NavItem[] = [
     href: "/settings",
     label: "Настройки",
     icon: Settings,
-    show: ({ role }) => role === "admin",
+    show: ({ superuser }) => superuser,
   },
 ];
 
-export function Nav({ headRole, role }: { headRole: HeadRole; role?: string }) {
+export function Nav({ headRole, superuser }: { headRole: HeadRole; superuser: boolean }) {
   const pathname = usePathname();
 
   return (
     <nav className="flex w-max items-center gap-1">
-      {ITEMS.filter((i) => !i.show || i.show({ headRole, role })).map((item) => {
+      {ITEMS.filter((i) => !i.show || i.show({ headRole, superuser })).map((item) => {
         const active =
           pathname === item.href || pathname.startsWith(`${item.href}/`);
         const Icon = item.icon;

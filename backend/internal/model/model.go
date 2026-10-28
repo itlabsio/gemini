@@ -46,6 +46,10 @@ type Instance struct {
 	Port     int          `json:"port"`
 	AuthType AuthType     `json:"auth_type"`
 
+	// Project — проект-владелец (RBAC). Пусто — инстанс не назначен проекту и
+	// доступен только superuser.
+	Project string `json:"project"`
+
 	// RestoreMode — как target-голова восстанавливает базы этого инстанса.
 	// Пусто в API-ответе для source-инстансов. См. RestoreMode.
 	RestoreMode RestoreMode `json:"restore_mode,omitempty"`
@@ -309,4 +313,12 @@ type User struct {
 	Email      string    `json:"email"`
 	Roles      []string  `json:"roles"`
 	LastSeenAt time.Time `json:"last_seen_at"`
+}
+
+// Project — проект, к которому привязываются инстансы (RBAC).
+type Project struct {
+	Name          string    `json:"name"`
+	InstanceCount int       `json:"instance_count"`
+	CreatedBy     string    `json:"created_by"`
+	CreatedAt     time.Time `json:"created_at"`
 }

@@ -1,5 +1,5 @@
-// Package auth валидирует JWT от Keycloak (OIDC) по JWKS и извлекает роль
-// пользователя (admin / operator / viewer). Проверка выполняется на обеих головах
+// Package auth валидирует JWT от Keycloak (OIDC) по JWKS и извлекает права:
+// client-роль superuser и роли по проектам из claim groups ("/project/role"). Проверка выполняется на обеих головах
 // локально — токен второй головы здесь ни при чём (для межголовых вызовов см. peer).
 package auth
 
@@ -20,7 +20,7 @@ import (
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/config"
 )
 
-// Role — роль пользователя в СРК.
+// Role — роль пользователя внутри проекта.
 type Role string
 
 const (
@@ -35,11 +35,67 @@ var rank = map[Role]int{RoleViewer: 1, RoleOperator: 2, RoleAdmin: 3}
 // AtLeast сообщает, покрывает ли роль r требуемый минимум min.
 func (r Role) AtLeast(min Role) bool { return rank[r] >= rank[min] }
 
+// roleSuperuser — client-роль Keycloak, дающая полный доступ к инстансу Gemini.
+// Остальные роли приходят только из групп (см. parseGroups).
+const roleSuperuser = "superuser"
+
+// groupRoles — как имена сегментов группы Keycloak ("/<project>/<role>")
+// отображаются в роли Gemini.
+var groupRoles = map[string]Role{
+	"admin":     RoleAdmin,
+	"developer": RoleOperator,
+	"operator":  RoleOperator,
+	"readonly":  RoleViewer,
+	"viewer":    RoleViewer,
+}
+
 // Identity — установленная личность запроса.
 type Identity struct {
-	Subject string
-	Email   string
-	Role    Role
+	Subject   string
+	Email     string
+	Superuser bool
+	// Projects — роль пользователя в каждом проекте (из claim groups).
+	Projects map[string]Role
+}
+
+// Can сообщает, может ли пользователь действовать с ролью не ниже min в проекте.
+// Superuser может всё; пустой проект (инстанс без назначенного проекта) —
+// только superuser.
+func (id Identity) Can(project string, min Role) bool {
+	if id.Superuser {
+		return true
+	}
+	if project == "" {
+		return false
+	}
+	r, ok := id.Projects[project]
+	return ok && r.AtLeast(min)
+}
+
+// CanAnywhere — есть ли роль не ниже min хотя бы в одном проекте.
+func (id Identity) CanAnywhere(min Role) bool {
+	if id.Superuser {
+		return true
+	}
+	for _, r := range id.Projects {
+		if r.AtLeast(min) {
+			return true
+		}
+	}
+	return false
+}
+
+// ProjectsAtLeast — проекты, где роль не ниже min (для фильтрации выборок).
+// Для superuser список не имеет смысла — вызывающий проверяет Superuser сам.
+func (id Identity) ProjectsAtLeast(min Role) []string {
+	out := make([]string, 0, len(id.Projects))
+	for p, r := range id.Projects {
+		if r.AtLeast(min) {
+			out = append(out, p)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 type ctxKey int
@@ -50,6 +106,11 @@ const identityKey ctxKey = 0
 func FromContext(ctx context.Context) (Identity, bool) {
 	id, ok := ctx.Value(identityKey).(Identity)
 	return id, ok
+}
+
+// WithIdentity кладёт Identity в контекст (Middleware и тесты).
+func WithIdentity(ctx context.Context, id Identity) context.Context {
+	return context.WithValue(ctx, identityKey, id)
 }
 
 // Verifier кеширует JWKS и валидирует токены.
@@ -115,33 +176,47 @@ func audienceMatches(tok jwt.Token, clientID string) bool {
 	return false
 }
 
-// resolveRole берёт роли ТОЛЬКО из resource_access.<ClientID>.roles (client-роли
-// клиента головы) и возвращает максимальную из известных СРК ролей. realm-роли и
-// groups сознательно не учитываются — иначе realm-роль с именем "admin" у
-// realm-администратора поднимала бы его в СРК.
-func (v *Verifier) resolveRole(tok jwt.Token) (Role, bool) {
+// isSuperuser смотрит ТОЛЬКО resource_access.<ClientID>.roles (client-роли
+// клиента инстанса Gemini). realm-роли сознательно не учитываются — иначе
+// realm-роль "superuser" у realm-администратора давала бы полный доступ в Gemini.
+func (v *Verifier) isSuperuser(tok jwt.Token) bool {
 	var resourceAccess map[string]any
 	if err := tok.Get("resource_access", &resourceAccess); err != nil {
-		return "", false
+		return false
 	}
 	client, ok := resourceAccess[v.cfg.ClientID]
 	if !ok {
-		return "", false
+		return false
 	}
+	return slices.Contains(stringsFrom(client, "roles"), roleSuperuser)
+}
 
-	best := Role("")
-	for _, name := range stringsFrom(client, "roles") {
-		switch Role(name) {
-		case RoleAdmin, RoleOperator, RoleViewer:
-			if rank[Role(name)] > rank[best] {
-				best = Role(name)
+// parseGroups разбирает claim groups (Keycloak "Full group path": "/project/role").
+// Проект — первый сегмент пути, роль — наивысшая из распознанных среди
+// остальных сегментов. Группы без ведущего "/" (fullPath выключен) и группы без
+// распознанной роли ничего не дают; при нескольких группах одного проекта
+// берётся наивысшая роль.
+func parseGroups(groups []string) map[string]Role {
+	out := map[string]Role{}
+	for _, g := range groups {
+		if !strings.HasPrefix(g, "/") {
+			continue
+		}
+		segs := strings.Split(strings.Trim(g, "/"), "/")
+		if len(segs) < 2 || segs[0] == "" {
+			continue
+		}
+		var best Role
+		for _, seg := range segs[1:] {
+			if r, ok := groupRoles[seg]; ok && rank[r] > rank[best] {
+				best = r
 			}
 		}
+		if best != "" && rank[best] > rank[out[segs[0]]] {
+			out[segs[0]] = best
+		}
 	}
-	if best == "" {
-		return "", false
-	}
-	return best, true
+	return out
 }
 
 func stringsFrom(v any, key string) []string {
@@ -177,32 +252,51 @@ func (v *Verifier) Middleware(next http.Handler) http.Handler {
 			writeErr(w, http.StatusUnauthorized, "invalid or expired token")
 			return
 		}
-		role, ok := v.resolveRole(tok)
-		if !ok {
-			writeErr(w, http.StatusForbidden, "no gemini role (admin/operator/viewer) in token")
+		var groups []string
+		_ = tok.Get("groups", &groups)
+		id := Identity{Superuser: v.isSuperuser(tok), Projects: parseGroups(groups)}
+		if !id.Superuser && len(id.Projects) == 0 {
+			writeErr(w, http.StatusForbidden,
+				"no gemini access: need superuser role or membership in a project group (/<project>/<role>)")
 			return
 		}
-		id := Identity{Role: role}
 		id.Subject, _ = tok.Subject()
 		var email string
 		if err := tok.Get("email", &email); err == nil {
 			id.Email = email
 		}
-		ctx := context.WithValue(r.Context(), identityKey, id)
+		ctx := WithIdentity(r.Context(), id)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-// RequireRole — обёртка эндпоинта, требующая роль не ниже min.
-func RequireRole(min Role, h http.HandlerFunc) http.HandlerFunc {
+// RequireSuperuser — обёртка эндпоинта, доступного только superuser.
+func RequireSuperuser(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := FromContext(r.Context())
 		if !ok {
 			writeErr(w, http.StatusUnauthorized, "unauthenticated")
 			return
 		}
-		if !id.Role.AtLeast(min) {
-			writeErr(w, http.StatusForbidden, fmt.Sprintf("role %q required, have %q", min, id.Role))
+		if !id.Superuser {
+			writeErr(w, http.StatusForbidden, "superuser role required")
+			return
+		}
+		h(w, r)
+	}
+}
+
+// RequireAnyProject — грубый гейт: роль не ниже min хотя бы в одном проекте.
+// Проверка на конкретный проект/инстанс — в обработчике через Identity.Can.
+func RequireAnyProject(min Role, h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := FromContext(r.Context())
+		if !ok {
+			writeErr(w, http.StatusUnauthorized, "unauthenticated")
+			return
+		}
+		if !id.CanAnywhere(min) {
+			writeErr(w, http.StatusForbidden, fmt.Sprintf("role %q in some project required", min))
 			return
 		}
 		h(w, r)

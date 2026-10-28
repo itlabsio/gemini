@@ -31,19 +31,26 @@ import {
 export interface TargetOption {
   id: string;
   instanceId: string;
+  /** Проект инстанса базы ("" — не назначен). */
+  project: string;
   label: string;
 }
 
 type RolesState = Record<string, string[] | "loading" | "error">;
 
 export function MappingEditor({
+  projects,
   targets,
   existing,
 }: {
+  /** Проекты, в которых пользователь может сопоставлять (admin проекта / superuser). */
+  projects: string[];
   targets: TargetOption[];
   existing: DatabaseMapping[];
 }) {
   const [pending, start] = useTransition();
+  const [project, setProject] = useState(projects[0] ?? "");
+  const projectTargets = targets.filter((t) => t.project === project);
   const [pairingId, setPairingId] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   // Кэш ролей по инстансу: грузим лениво, когда строка выбирает целевую базу.
@@ -66,12 +73,36 @@ export function MappingEditor({
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <Select
+          value={project}
+          onValueChange={(v) => {
+            setProject(v);
+            setCandidates([]);
+          }}
+        >
+          <SelectTrigger size="sm" className="w-48" aria-label="Проект">
+            <SelectValue placeholder="Проект" />
+          </SelectTrigger>
+          <SelectContent>
+            {projects.map((p) => (
+              <SelectItem key={p} value={p}>
+                {p}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <span className="text-xs text-muted-foreground">
+          Сопоставляются базы Source и Target одного проекта
+        </span>
+      </div>
+
       <Button
         variant="outline"
         className="self-start"
         onClick={() =>
           start(async () => {
-            const res = await loadCandidatesAction();
+            const res = await loadCandidatesAction(project);
             if (res.ok) {
               setPairingId(res.pairingId);
               setCandidates(res.candidates);
@@ -80,7 +111,7 @@ export function MappingEditor({
             }
           })
         }
-        disabled={pending}
+        disabled={pending || !project}
       >
         <CloudDownload className={pending ? "animate-pulse" : undefined} />
         Загрузить список баз с Source
@@ -104,7 +135,7 @@ export function MappingEditor({
                   key={c.external_id}
                   candidate={c}
                   pairingId={pairingId}
-                  targets={targets}
+                  targets={projectTargets}
                   roles={roles}
                   loadRoles={loadRoles}
                   existing={existingBySource.get(c.external_id)}

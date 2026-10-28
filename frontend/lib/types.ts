@@ -7,6 +7,8 @@ export type RestoreMode = "recreate" | "in_place" | "in_place_per_db";
 export interface Instance {
   id: string;
   role: InstanceRole;
+  /** Проект-владелец (RBAC); "" — не назначен, управляет только superuser. */
+  project: string;
   name: string;
   host: string;
   port: number;
@@ -146,10 +148,23 @@ export interface Candidate {
   enabled: boolean;
 }
 
+export type ProjectRole = "viewer" | "operator" | "admin";
+
+export interface Project {
+  name: string;
+  instance_count: number;
+  created_by: string;
+  created_at: string;
+}
+
 export interface Me {
   subject: string;
   email: string;
-  role: "viewer" | "operator" | "admin";
+  superuser: boolean;
+  /** Роль в каждом проекте (из групп Keycloak "/<project>/<role>"). */
+  projects: Record<string, ProjectRole>;
+  /** Target: есть ли активная пара с Source (список pairings — только superuser). */
+  source_paired: boolean;
   head_role: HeadRole;
   vault_enabled: boolean;
   /** Публичный ключ этой головы (base64 Ed25519) — для сверки при pairing. */
