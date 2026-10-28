@@ -191,6 +191,22 @@ func (v *Verifier) isSuperuser(tok jwt.Token) bool {
 	return slices.Contains(stringsFrom(client, "roles"), roleSuperuser)
 }
 
+// groupsClaim достаёт claim groups. jwx кладёт JSON-массив как []any, поэтому
+// Get в []string не сработает (тихо вернул бы пусто) — приводим вручную.
+func groupsClaim(tok jwt.Token) []string {
+	var raw []any
+	if err := tok.Get("groups", &raw); err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, e := range raw {
+		if s, ok := e.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // parseGroups разбирает claim groups (Keycloak "Full group path": "/project/role").
 // Проект — первый сегмент пути, роль — наивысшая из распознанных среди
 // остальных сегментов. Группы без ведущего "/" (fullPath выключен) и группы без
@@ -252,9 +268,7 @@ func (v *Verifier) Middleware(next http.Handler) http.Handler {
 			writeErr(w, http.StatusUnauthorized, "invalid or expired token")
 			return
 		}
-		var groups []string
-		_ = tok.Get("groups", &groups)
-		id := Identity{Superuser: v.isSuperuser(tok), Projects: parseGroups(groups)}
+		id := Identity{Superuser: v.isSuperuser(tok), Projects: parseGroups(groupsClaim(tok))}
 		if !id.Superuser && len(id.Projects) == 0 {
 			writeErr(w, http.StatusForbidden,
 				"no gemini access: need superuser role or membership in a project group (/<project>/<role>)")

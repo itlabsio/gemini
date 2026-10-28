@@ -5,7 +5,35 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
+
+	"github.com/lestrrat-go/jwx/v3/jwt"
+
+	"gl.sdvor.com/devops/docker/gemini/backend/internal/config"
 )
+
+// Claims разбираются из реального JSON токена (а не из заранее собранных
+// структур): тип значений, которые отдаёт jwx, влияет на извлечение.
+func TestClaimsFromToken(t *testing.T) {
+	raw := `{"azp":"gemini",
+		"resource_access":{"gemini":{"roles":["superuser"]},"other":{"roles":["superuser"]}},
+		"groups":["/admin","/proj/developer","/proj2/admin"]}`
+	tok, err := jwt.ParseInsecure([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := &Verifier{cfg: config.OIDCConfig{ClientID: "gemini"}}
+	if !v.isSuperuser(tok) {
+		t.Error("superuser role of own client must be recognized")
+	}
+	other := &Verifier{cfg: config.OIDCConfig{ClientID: "nope"}}
+	if other.isSuperuser(tok) {
+		t.Error("superuser role of a foreign client must not count")
+	}
+	want := map[string]Role{"proj": RoleOperator, "proj2": RoleAdmin}
+	if got := parseGroups(groupsClaim(tok)); !reflect.DeepEqual(got, want) {
+		t.Errorf("projects = %v, want %v", got, want)
+	}
+}
 
 func TestParseGroups(t *testing.T) {
 	got := parseGroups([]string{
