@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getMe, listProjects } from "@/lib/api";
 import type { Project } from "@/lib/types";
 import { ProjectsManager } from "@/components/projects-manager";
 import { PageHeader } from "@/components/ui/page-header";
 import { Alert } from "@/components/ui/alert";
+
+export const metadata: Metadata = { title: "Проекты" };
 
 export default async function ProjectsPage() {
   const me = await getMe();

@@ -13,7 +13,8 @@ import type { HeadRole } from "@/lib/types";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Gemini — СРК",
+  // Страницы задают свой title, он подставляется в шаблон: «Gemini • Инстансы».
+  title: { template: "Gemini • %s", default: "Gemini" },
   description: "Система логического резервного копирования",
 };
 

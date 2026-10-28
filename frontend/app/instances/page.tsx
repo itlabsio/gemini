@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Database, Plus } from "lucide-react";
 import { listInstances, getMe } from "@/lib/api";
@@ -8,6 +9,8 @@ import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { InstancesTable } from "@/components/instances-table";
 import { InstancesProjectFilter } from "@/components/instances-project-filter";
+
+export const metadata: Metadata = { title: "Инстансы" };
 
 export default async function InstancesPage({
   searchParams,

@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getMe, listInstances, listProjects } from "@/lib/api";
 import { InstanceForm } from "@/components/instance-form";
 import { caDonorsFrom } from "@/lib/ca-donors";
+
+export const metadata: Metadata = { title: "Новый инстанс" };
 
 export default async function NewInstancePage() {
   const me = await getMe();

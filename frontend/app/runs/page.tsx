@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { X } from "lucide-react";
 import { listRuns } from "@/lib/api";
@@ -16,6 +17,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
+export const metadata: Metadata = { title: "Журнал" };
 
 export default async function RunsPage({
   searchParams,

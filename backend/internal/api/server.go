@@ -90,7 +90,9 @@ func NewRouter(d Deps) http.Handler {
 	apiR.HandleFunc("/pairings/{id}", auth.RequireSuperuser(s.deletePairing)).Methods(http.MethodDelete)
 	apiR.HandleFunc("/pairings/{id}/revoke", auth.RequireSuperuser(s.revokePairing)).Methods(http.MethodPost)
 
-	apiR.HandleFunc("/settings", auth.RequireSuperuser(s.getSettings)).Methods(http.MethodGet)
+	// Читать дефолты (размер тома, ресурсы) нужно и странице инстанса для подсказок —
+	// секретов в настройках нет. Менять — только superuser.
+	apiR.HandleFunc("/settings", auth.RequireAnyProject(auth.RoleViewer, s.getSettings)).Methods(http.MethodGet)
 	apiR.HandleFunc("/settings", auth.RequireSuperuser(s.putSettings)).Methods(http.MethodPut)
 
 	apiR.HandleFunc("/s3-buckets", auth.RequireSuperuser(s.listS3Buckets)).Methods(http.MethodGet)

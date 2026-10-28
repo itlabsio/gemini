@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ApiError, getInstance, getMe, listInstances, listProjects } from "@/lib/api";
 import { can } from "@/lib/rbac";
@@ -6,6 +7,16 @@ import { caDonorsFrom } from "@/lib/ca-donors";
 
 interface Props {
   params: Promise<{ id: string }>;
+}
+
+/** Заголовок вкладки — имя инстанса; без доступа или при ошибке — общее «Инстанс». */
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { id } = await params;
+  try {
+    return { title: (await getInstance(id)).name + " — правка" };
+  } catch {
+    return { title: "Инстанс" };
+  }
 }
 
 export default async function EditInstancePage({ params }: Props) {

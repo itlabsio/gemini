@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getMe, listPairings } from "@/lib/api";
 import type { HeadPairing } from "@/lib/types";
@@ -6,6 +7,8 @@ import { PairingsTable } from "@/components/pairings-table";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { PageHeader } from "@/components/ui/page-header";
 import { Alert } from "@/components/ui/alert";
+
+export const metadata: Metadata = { title: "Pairing" };
 
 export default async function PairingPage() {
   const me = await getMe();

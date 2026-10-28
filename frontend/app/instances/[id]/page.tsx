@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -34,6 +35,16 @@ function Detail({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+/** Заголовок вкладки — имя инстанса; без доступа или при ошибке — общее «Инстанс». */
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { id } = await params;
+  try {
+    return { title: (await getInstance(id)).name };
+  } catch {
+    return { title: "Инстанс" };
+  }
+}
+
 export default async function InstanceDetailPage({ params }: Props) {
   const { id } = await params;
 
@@ -49,8 +60,7 @@ export default async function InstanceDetailPage({ params }: Props) {
   const [databases, activeRuns, settings] = await Promise.all([
     listDatabases(id).catch(() => []),
     listActiveRuns().catch(() => []),
-    // настройки доступны только superuser'у; остальным подсказка недоступна
-    me.superuser ? getSettings().catch(() => null) : Promise.resolve(null),
+    getSettings().catch(() => null),
   ]);
 
   return (
@@ -166,6 +176,7 @@ export default async function InstanceDetailPage({ params }: Props) {
         databases={databases}
         initialActiveRuns={activeRuns}
         defaultStorageSize={settings?.default_storage_size ?? ""}
+        defaultStorageType={settings?.default_storage_type ?? ""}
         headRole={me.head_role}
         restoreMode={instance.restore_mode}
         canEdit={can(me, instance.project, "admin")}

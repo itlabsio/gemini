@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getMe, getSettings, listS3Buckets } from "@/lib/api";
 import { LocalDateTime } from "@/components/local-date-time";
 import { SettingsForm } from "@/components/settings-form";
 import { S3BucketsManager } from "@/components/s3-buckets-manager";
 import { PageHeader } from "@/components/ui/page-header";
+
+export const metadata: Metadata = { title: "Настройки" };
 
 export default async function SettingsPage() {
   const me = await getMe();

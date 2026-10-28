@@ -53,6 +53,8 @@ interface Props {
   databases: Database[];
   initialActiveRuns: BackupRun[];
   defaultStorageSize: string;
+  /** Тип тома из настроек ("" — не загрузились). */
+  defaultStorageType: string;
   headRole: "source" | "target";
   /** Стратегия restore инстанса (только target). */
   restoreMode?: RestoreMode;
@@ -61,6 +63,8 @@ interface Props {
 }
 
 /** Роли с LOGIN для выбора пользователя restore: null — ещё грузятся. */
+const STORAGE_LABEL: Record<string, string> = { ephemeral: "ephemeral PVC", emptydir: "emptyDir" };
+
 type LoginRoles = string[] | "error" | null;
 
 type ActionResult = { ok: boolean; error?: string };
@@ -80,6 +84,7 @@ export function DatabasesManager({
   databases,
   initialActiveRuns,
   defaultStorageSize,
+  defaultStorageType,
   headRole,
   restoreMode,
   canEdit,
@@ -260,6 +265,7 @@ export function DatabasesManager({
                   disabled={pending}
                   activeRun={activeByDb.get(db.id)}
                   defaultStorageSize={defaultStorageSize}
+                  defaultStorageType={defaultStorageType}
                   run={run}
                   onStop={stopRun}
                 />
@@ -283,6 +289,7 @@ function Row({
   disabled,
   activeRun,
   defaultStorageSize,
+  defaultStorageType,
   run,
   onStop,
 }: {
@@ -296,6 +303,8 @@ function Row({
   disabled: boolean;
   activeRun?: BackupRun;
   defaultStorageSize: string;
+  /** Тип тома из настроек ("" — не загрузились). */
+  defaultStorageType: string;
   run: (fn: () => Promise<ActionResult>, okMsg?: string) => void;
   onStop: (r: BackupRun) => void;
 }) {
@@ -402,11 +411,13 @@ function Row({
             onValueChange={(v) => setStType(v === "default" ? "" : (v as "ephemeral" | "emptydir"))}
             disabled={!canEdit || disabled}
           >
-            <SelectTrigger size="sm" className="w-[9.5rem]">
+            <SelectTrigger size="sm" className="w-[11.5rem]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">по умолчанию</SelectItem>
+              <SelectItem value="default">
+                {defaultStorageType ? `по умолч. (${STORAGE_LABEL[defaultStorageType] ?? defaultStorageType})` : "по умолчанию"}
+              </SelectItem>
               <SelectItem value="ephemeral">ephemeral PVC</SelectItem>
               <SelectItem value="emptydir">emptyDir</SelectItem>
             </SelectContent>
@@ -416,7 +427,7 @@ function Row({
               value={stSize}
               onChange={(e) => setStSize(e.target.value)}
               disabled={!canEdit || disabled}
-              placeholder={defaultStorageSize || "20Gi"}
+              placeholder={defaultStorageSize || "по умолч."}
               aria-invalid={Boolean(sizeErr)}
               title={sizeErr ?? undefined}
               className="h-8 w-20 text-xs"
