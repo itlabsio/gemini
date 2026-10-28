@@ -9,6 +9,8 @@ export interface Instance {
   role: InstanceRole;
   /** Проект-владелец (RBAC); "" — не назначен, управляет только superuser. */
   project: string;
+  /** "terraform" — создан/изменён terraform-provider-gemini. */
+  managed_by: string;
   name: string;
   host: string;
   port: number;
@@ -153,6 +155,7 @@ export type ProjectRole = "viewer" | "operator" | "admin";
 export interface Project {
   name: string;
   instance_count: number;
+  managed_by: string;
   created_by: string;
   created_at: string;
 }

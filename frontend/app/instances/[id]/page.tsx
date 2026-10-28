@@ -14,6 +14,7 @@ import { DatabasesManager } from "@/components/databases-manager";
 import { InstanceActions } from "@/components/instance-actions";
 import { SslModeBadge } from "@/components/ssl-badge";
 import { SecretBadge } from "@/components/secret-badge";
+import { ManagedBadge } from "@/components/managed-badge";
 import { MiddleTruncate } from "@/components/middle-truncate";
 import { fmtPgVersion } from "@/lib/utils";
 import { can } from "@/lib/rbac";
@@ -73,9 +74,14 @@ export default async function InstanceDetailPage({ params }: Props) {
           >
             {instance.role}
           </Badge>
+          <ManagedBadge managedBy={instance.managed_by} />
         </div>
         {can(me, instance.project, "admin") && (
-          <InstanceActions id={id} name={instance.name} />
+          <InstanceActions
+            id={id}
+            name={instance.name}
+            canUnmanage={me.superuser && instance.managed_by === "terraform"}
+          />
         )}
       </div>
 

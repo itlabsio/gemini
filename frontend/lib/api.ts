@@ -88,6 +88,12 @@ export const createProject = (name: string) =>
   apiFetch<Project>("/api/projects", { method: "POST", body: JSON.stringify({ name }) });
 export const deleteProject = (name: string) =>
   apiFetch<void>(`/api/projects/${encodeURIComponent(name)}`, { method: "DELETE" });
+/** Снять метку Terraform с проекта (superuser). */
+export const unmanageProject = (name: string) =>
+  apiFetch<void>(`/api/projects/${encodeURIComponent(name)}/managed-by`, { method: "DELETE" });
+/** Снять метку Terraform с инстанса (superuser). */
+export const unmanageInstance = (id: string) =>
+  apiFetch<void>(`/api/instances/${id}/managed-by`, { method: "DELETE" });
 
 // --- запись ---
 export interface InstancePayload {

@@ -240,6 +240,7 @@ func (s *Server) createInstance(w http.ResponseWriter, r *http.Request) {
 	if !s.projectExists(w, r, in.Project) {
 		return
 	}
+	in.ManagedBy = managedBy(r)
 	id, _ := auth.FromContext(r.Context())
 	inst, err := s.d.Store.CreateInstance(r.Context(), in, id.Email)
 	if err != nil {
@@ -284,6 +285,7 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 	} else {
 		in.Project = nil
 	}
+	in.ManagedBy = managedBy(r)
 	inst, err := s.d.Store.UpdateInstance(r.Context(), id, in)
 	if err != nil {
 		writeStoreError(w, err)
@@ -291,6 +293,18 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 	}
 	s.audit(r, "instance.update", id, nil)
 	writeJSON(w, http.StatusOK, inst)
+}
+
+// clearInstanceManagedBy (superuser) снимает метку Terraform: инстанс убрали из
+// Terraform, дальше им управляют через UI.
+func (s *Server) clearInstanceManagedBy(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	if err := s.d.Store.ClearInstanceManagedBy(r.Context(), id); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.audit(r, "instance.unmanage", id, nil)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) deleteInstance(w http.ResponseWriter, r *http.Request) {

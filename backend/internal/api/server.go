@@ -64,12 +64,14 @@ func NewRouter(d Deps) http.Handler {
 	apiR.HandleFunc("/projects", auth.RequireSuperuser(s.listProjects)).Methods(http.MethodGet)
 	apiR.HandleFunc("/projects", auth.RequireSuperuser(s.createProject)).Methods(http.MethodPost)
 	apiR.HandleFunc("/projects/{name}", auth.RequireSuperuser(s.deleteProject)).Methods(http.MethodDelete)
+	apiR.HandleFunc("/projects/{name}/managed-by", auth.RequireSuperuser(s.clearProjectManagedBy)).Methods(http.MethodDelete)
 
 	apiR.HandleFunc("/instances", auth.RequireAnyProject(auth.RoleViewer, s.listInstances)).Methods(http.MethodGet)
 	apiR.HandleFunc("/instances", auth.RequireSuperuser(s.createInstance)).Methods(http.MethodPost)
 	apiR.HandleFunc("/instances/{id}", auth.RequireAnyProject(auth.RoleViewer, s.getInstance)).Methods(http.MethodGet)
 	apiR.HandleFunc("/instances/{id}", auth.RequireAnyProject(auth.RoleAdmin, s.updateInstance)).Methods(http.MethodPut)
 	apiR.HandleFunc("/instances/{id}", auth.RequireAnyProject(auth.RoleAdmin, s.deleteInstance)).Methods(http.MethodDelete)
+	apiR.HandleFunc("/instances/{id}/managed-by", auth.RequireSuperuser(s.clearInstanceManagedBy)).Methods(http.MethodDelete)
 	apiR.HandleFunc("/instances/{id}/discover", auth.RequireAnyProject(auth.RoleAdmin, s.discoverInstance)).Methods(http.MethodPost)
 	apiR.HandleFunc("/instances/{id}/databases", auth.RequireAnyProject(auth.RoleViewer, s.listDatabases)).Methods(http.MethodGet)
 

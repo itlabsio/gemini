@@ -54,6 +54,18 @@ func (s *Server) authorizeDatabase(w http.ResponseWriter, r *http.Request, datab
 	return db, inst, true
 }
 
+// managedByHeader — им terraform-provider-gemini помечает свои запросы.
+const managedByHeader = "X-Gemini-Managed-By"
+
+// managedBy — метка управления для записи в БД. Принимается только известное
+// значение: произвольная строка из заголовка нарушила бы CHECK колонки.
+func managedBy(r *http.Request) string {
+	if r.Header.Get(managedByHeader) == "terraform" {
+		return "terraform"
+	}
+	return ""
+}
+
 // projectNameRe — имя проекта = имя группы Keycloak верхнего уровня: без "/"
 // (иначе не совпадёт с сегментом пути), без пробелов по краям и управляющих символов.
 var projectNameRe = regexp.MustCompile(`^[^/\s][^/\x00-\x1f]{0,62}$`)
@@ -87,13 +99,24 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	by, _ := ctxIdentity(r)
-	p, err := s.d.Store.CreateProject(r.Context(), name, by)
+	p, err := s.d.Store.CreateProject(r.Context(), name, by, managedBy(r))
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
 	s.audit(r, "project.create", name, nil)
 	writeJSON(w, http.StatusCreated, p)
+}
+
+// clearProjectManagedBy (superuser) снимает метку Terraform с проекта.
+func (s *Server) clearProjectManagedBy(w http.ResponseWriter, r *http.Request) {
+	name := mux.Vars(r)["name"]
+	if err := s.d.Store.ClearProjectManagedBy(r.Context(), name); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.audit(r, "project.unmanage", name, nil)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {

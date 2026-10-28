@@ -12,7 +12,7 @@ import (
 // ListProjects — проекты с числом привязанных инстансов.
 func (s *Store) ListProjects(ctx context.Context) ([]model.Project, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT p.name, p.created_by, p.created_at, COUNT(i.id)
+		SELECT p.name, p.created_by, p.created_at, p.managed_by, COUNT(i.id)
 		FROM projects p LEFT JOIN instances i ON i.project = p.name
 		GROUP BY p.name ORDER BY p.name`)
 	if err != nil {
@@ -22,7 +22,7 @@ func (s *Store) ListProjects(ctx context.Context) ([]model.Project, error) {
 	out := []model.Project{}
 	for rows.Next() {
 		var p model.Project
-		if err := rows.Scan(&p.Name, &p.CreatedBy, &p.CreatedAt, &p.InstanceCount); err != nil {
+		if err := rows.Scan(&p.Name, &p.CreatedBy, &p.CreatedAt, &p.ManagedBy, &p.InstanceCount); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -37,13 +37,14 @@ func (s *Store) ProjectExists(ctx context.Context, name string) (bool, error) {
 	return ok, err
 }
 
-// CreateProject создаёт проект; дубль имени → ErrConflict.
-func (s *Store) CreateProject(ctx context.Context, name, createdBy string) (*model.Project, error) {
+// CreateProject создаёт проект; дубль имени → ErrConflict. managedBy — см.
+// InstanceInput.ManagedBy.
+func (s *Store) CreateProject(ctx context.Context, name, createdBy, managedBy string) (*model.Project, error) {
 	var p model.Project
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO projects (name, created_by) VALUES ($1, $2)
-		RETURNING name, created_by, created_at`, name, createdBy,
-	).Scan(&p.Name, &p.CreatedBy, &p.CreatedAt)
+		INSERT INTO projects (name, created_by, managed_by) VALUES ($1, $2, $3)
+		RETURNING name, created_by, created_at, managed_by`, name, createdBy, managedBy,
+	).Scan(&p.Name, &p.CreatedBy, &p.CreatedAt, &p.ManagedBy)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -52,6 +53,18 @@ func (s *Store) CreateProject(ctx context.Context, name, createdBy string) (*mod
 		return nil, err
 	}
 	return &p, nil
+}
+
+// ClearProjectManagedBy снимает метку управления.
+func (s *Store) ClearProjectManagedBy(ctx context.Context, name string) error {
+	ct, err := s.pool.Exec(ctx, `UPDATE projects SET managed_by = '' WHERE name = $1`, name)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // DeleteProject удаляет проект. Если к нему привязаны инстансы → ErrConflict.

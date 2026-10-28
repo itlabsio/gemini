@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
-import { deleteInstanceAction } from "@/app/instances/actions";
+import { MoreHorizontal, Pencil, Trash2, Unlink } from "lucide-react";
+import { deleteInstanceAction, unmanageInstanceAction } from "@/app/instances/actions";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -25,7 +25,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-export function InstanceActions({ id, name }: { id: string; name: string }) {
+export function InstanceActions({
+  id,
+  name,
+  canUnmanage = false,
+}: {
+  id: string;
+  name: string;
+  /** superuser и инстанс под управлением Terraform. */
+  canUnmanage?: boolean;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -40,6 +49,14 @@ export function InstanceActions({ id, name }: { id: string; name: string }) {
         toast.error(res.error);
         setConfirmOpen(false);
       }
+    });
+  }
+
+  function onUnmanage() {
+    start(async () => {
+      const res = await unmanageInstanceAction(id);
+      if (res.ok) toast.success("Метка Terraform снята");
+      else toast.error(res.error);
     });
   }
 
@@ -58,6 +75,12 @@ export function InstanceActions({ id, name }: { id: string; name: string }) {
               Изменить
             </Link>
           </DropdownMenuItem>
+          {canUnmanage && (
+            <DropdownMenuItem disabled={pending} onSelect={onUnmanage}>
+              <Unlink />
+              Снять метку Terraform
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"

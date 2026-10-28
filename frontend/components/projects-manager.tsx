@@ -3,9 +3,14 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Unlink } from "lucide-react";
 import type { Project } from "@/lib/types";
-import { createProjectAction, deleteProjectAction } from "@/app/projects/actions";
+import {
+  createProjectAction,
+  deleteProjectAction,
+  unmanageProjectAction,
+} from "@/app/projects/actions";
+import { ManagedBadge } from "@/components/managed-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +48,14 @@ export function ProjectsManager({ projects }: { projects: Project[] }) {
         toast.success(`Проект «${n}» создан`);
         setName("");
       } else toast.error(res.error);
+    });
+  }
+
+  function unmanage(n: string) {
+    start(async () => {
+      const res = await unmanageProjectAction(n);
+      if (res.ok) toast.success(`С проекта «${n}» снята метка Terraform`);
+      else toast.error(res.error);
     });
   }
 
@@ -97,7 +110,12 @@ export function ProjectsManager({ projects }: { projects: Project[] }) {
             <TableBody>
               {projects.map((p) => (
                 <TableRow key={p.name}>
-                  <TableCell className="font-medium">{p.name}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{p.name}</span>
+                      <ManagedBadge managedBy={p.managed_by} />
+                    </div>
+                  </TableCell>
                   <TableCell>
                     {p.instance_count > 0 ? (
                       <Link
@@ -112,7 +130,19 @@ export function ProjectsManager({ projects }: { projects: Project[] }) {
                       <Badge variant="secondary">0</Badge>
                     )}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right whitespace-nowrap">
+                    {p.managed_by === "terraform" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Снять метку Terraform"
+                        title="Снять метку Terraform"
+                        disabled={pending}
+                        onClick={() => unmanage(p.name)}
+                      >
+                        <Unlink />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"

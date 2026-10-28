@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Instance } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { SecretBadge } from "@/components/secret-badge";
+import { ManagedBadge } from "@/components/managed-badge";
 import {
   Table,
   TableBody,
@@ -39,13 +40,16 @@ export function InstancesTable({ instances }: { instances: Instance[] }) {
                 className="cursor-pointer"
               >
                 <TableCell>
-                  <Link
-                    href={href}
-                    onClick={(e) => e.stopPropagation()}
-                    className="font-medium underline-offset-4 hover:underline"
-                  >
-                    {i.name}
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={href}
+                      onClick={(e) => e.stopPropagation()}
+                      className="font-medium underline-offset-4 hover:underline"
+                    >
+                      {i.name}
+                    </Link>
+                    <ManagedBadge managedBy={i.managed_by} />
+                  </div>
                 </TableCell>
                 <TableCell>
                   {i.project ? (

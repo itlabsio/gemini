@@ -50,6 +50,9 @@ type Instance struct {
 	// доступен только superuser.
 	Project string `json:"project"`
 
+	// ManagedBy — "terraform", если инстанс создан/изменён провайдером; "" — UI/API.
+	ManagedBy string `json:"managed_by"`
+
 	// RestoreMode — как target-голова восстанавливает базы этого инстанса.
 	// Пусто в API-ответе для source-инстансов. См. RestoreMode.
 	RestoreMode RestoreMode `json:"restore_mode,omitempty"`
@@ -319,6 +322,7 @@ type User struct {
 type Project struct {
 	Name          string    `json:"name"`
 	InstanceCount int       `json:"instance_count"`
+	ManagedBy     string    `json:"managed_by"`
 	CreatedBy     string    `json:"created_by"`
 	CreatedAt     time.Time `json:"created_at"`
 }

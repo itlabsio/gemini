@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { ApiError, createProject, deleteProject } from "@/lib/api";
+import { ApiError, createProject, deleteProject, unmanageProject } from "@/lib/api";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -22,6 +22,16 @@ export async function createProjectAction(name: string): Promise<Result> {
 export async function deleteProjectAction(name: string): Promise<Result> {
   try {
     await deleteProject(name);
+    revalidatePath("/projects");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function unmanageProjectAction(name: string): Promise<Result> {
+  try {
+    await unmanageProject(name);
     revalidatePath("/projects");
     return { ok: true };
   } catch (e) {

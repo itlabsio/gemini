@@ -11,6 +11,7 @@ import {
   listInstanceRoles,
   patchDatabase,
   runDatabase,
+  unmanageInstance,
   updateInstance,
   vaultSecretKeys,
   type InstancePayload,
@@ -60,6 +61,17 @@ export async function updateInstanceAction(id: string, p: InstancePayload): Prom
   try {
     await updateInstance(id, p);
     revalidatePath(`/instances/${id}`);
+    return { ok: true };
+  } catch (e) {
+    return toResult(e);
+  }
+}
+
+export async function unmanageInstanceAction(id: string): Promise<Result> {
+  try {
+    await unmanageInstance(id);
+    revalidatePath(`/instances/${id}`);
+    revalidatePath("/instances");
     return { ok: true };
   } catch (e) {
     return toResult(e);

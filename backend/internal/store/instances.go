@@ -30,12 +30,15 @@ type InstanceInput struct {
 	// Project — проект-владелец. При создании пусто → NULL; при обновлении nil
 	// оставляет текущий, "" снимает привязку. Права на смену проверяет API.
 	Project *string
+	// ManagedBy — "terraform" помечает инстанс управляемым провайдером; "" при
+	// обновлении метку не трогает (снимается только ClearInstanceManagedBy).
+	ManagedBy string
 }
 
 // instanceCols — только адресная часть, из таблицы instances.
 // Дескриптор кред подтягивается join'ом (см. instanceSelect); зашифрованный
 // пароль в этих выборках не участвует НИКОГДА — он читается лишь Credentials().
-const instanceCols = `i.id, i.role, i.name, COALESCE(i.project, ''), i.host, i.port, i.restore_mode,
+const instanceCols = `i.id, i.role, i.name, COALESCE(i.project, ''), i.managed_by, i.host, i.port, i.restore_mode,
 	i.ssl_mode, i.ssl_root_cert, i.discovery_db, i.excluded_databases, i.server_version_num,
 	i.created_by, i.created_at, i.updated_at,
 	c.auth_type, c.plain_username,
@@ -46,7 +49,7 @@ const instanceSelect = `SELECT ` + instanceCols + `
 
 func scanInstance(row pgx.Row) (*model.Instance, error) {
 	var i model.Instance
-	err := row.Scan(&i.ID, &i.Role, &i.Name, &i.Project, &i.Host, &i.Port, &i.RestoreMode,
+	err := row.Scan(&i.ID, &i.Role, &i.Name, &i.Project, &i.ManagedBy, &i.Host, &i.Port, &i.RestoreMode,
 		&i.SSLMode, &i.SSLRootCert, &i.DiscoveryDB, &i.ExcludedDatabases, &i.ServerVersionNum,
 		&i.CreatedBy, &i.CreatedAt, &i.UpdatedAt,
 		&i.AuthType, &i.PlainUsername,
@@ -200,11 +203,11 @@ func (s *Store) CreateInstance(ctx context.Context, in InstanceInput, createdBy 
 
 	var id string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO instances (role, name, host, port, restore_mode, ssl_mode, ssl_root_cert, discovery_db, excluded_databases, created_by, project)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NULLIF($11,''))
+		INSERT INTO instances (role, name, host, port, restore_mode, ssl_mode, ssl_root_cert, discovery_db, excluded_databases, created_by, project, managed_by)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NULLIF($11,''), $12)
 		RETURNING id`,
 		in.Role, in.Name, in.Host, in.Port, in.RestoreMode, in.SSLMode, in.SSLRootCert, in.DiscoveryDB,
-		excludedArg(in.ExcludedDatabases), createdBy, derefStr(in.Project),
+		excludedArg(in.ExcludedDatabases), createdBy, derefStr(in.Project), in.ManagedBy,
 	).Scan(&id); err != nil {
 		return nil, mapErr(err)
 	}
@@ -252,10 +255,11 @@ func (s *Store) UpdateInstance(ctx context.Context, id string, in InstanceInput)
 	ct, err := tx.Exec(ctx, `
 		UPDATE instances SET role=$2, name=$3, host=$4, port=$5, ssl_mode=$6, ssl_root_cert=$7,
 			discovery_db=$8, excluded_databases=$9, restore_mode=$10,
-			project = CASE WHEN $11::boolean THEN NULLIF($12,'') ELSE project END
+			project = CASE WHEN $11::boolean THEN NULLIF($12,'') ELSE project END,
+			managed_by = CASE WHEN $13 <> '' THEN $13 ELSE managed_by END
 		WHERE id=$1`,
 		id, in.Role, in.Name, in.Host, in.Port, in.SSLMode, in.SSLRootCert, in.DiscoveryDB,
-		excludedArg(in.ExcludedDatabases), in.RestoreMode, in.Project != nil, derefStr(in.Project))
+		excludedArg(in.ExcludedDatabases), in.RestoreMode, in.Project != nil, derefStr(in.Project), in.ManagedBy)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -273,6 +277,18 @@ func (s *Store) UpdateInstance(ctx context.Context, id string, in InstanceInput)
 		return nil, err
 	}
 	return inst, nil
+}
+
+// ClearInstanceManagedBy снимает метку управления (ресурс убрали из Terraform).
+func (s *Store) ClearInstanceManagedBy(ctx context.Context, id string) error {
+	ct, err := s.pool.Exec(ctx, `UPDATE instances SET managed_by = '' WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // DeleteInstance удаляет инстанс (каскадно — его databases).
