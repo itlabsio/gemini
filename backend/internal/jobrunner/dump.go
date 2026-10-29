@@ -102,8 +102,12 @@ func runDump(ctx context.Context, e Env) error {
 	pgDump.Stderr = os.Stderr
 
 	log.Printf("dump: pg_dump -Fc %s -> %s", e.PGDatabase, dumpPath)
+	started := time.Now()
 	if err := pgDump.Run(); err != nil {
 		return fmt.Errorf("pg_dump: %w", err)
+	}
+	if fi, err := os.Stat(dumpPath); err == nil {
+		log.Printf("dump: pg_dump done in %s, %s", time.Since(started).Round(time.Second), throughput(fi.Size(), time.Since(started)))
 	}
 
 	sum, err := sha256File(dumpPath)
@@ -126,12 +130,14 @@ func runDump(ctx context.Context, e Env) error {
 	// бакетов не роняет Job — дамп всё равно доступен Target'ам из остальных;
 	// бакеты без копии инстанс Source обнаружит при подписи и пришлёт
 	// нотификацию. Падаем, только если не удалось никуда.
+	uploadStarted := time.Now()
 	errs := make([]error, len(e.S3Buckets))
 	var wg sync.WaitGroup
 	for i, b := range e.S3Buckets {
 		wg.Go(func() { errs[i] = uploadDump(ctx, b, e.S3ObjectKey, dumpPath, sum, exts) })
 	}
 	wg.Wait()
+	log.Printf("dump: upload to %d bucket(s) done in %s", len(e.S3Buckets), time.Since(uploadStarted).Round(time.Second))
 	var failed []string
 	for i, b := range e.S3Buckets {
 		if errs[i] != nil {
@@ -168,11 +174,13 @@ func uploadDump(ctx context.Context, b storage.JobBucket, key, dumpPath, sum str
 	}
 
 	log.Printf("dump: uploading %s, %d bytes", b.Object(key), fi.Size())
+	started := time.Now()
 	if _, err := mc.PutObject(ctx, b.Bucket, key, f, fi.Size(), minio.PutObjectOptions{
 		ContentType: "application/octet-stream",
 	}); err != nil {
 		return fmt.Errorf("upload dump: %w", err)
 	}
+	log.Printf("dump: uploaded %s in %s, %s", b.Object(key), time.Since(started).Round(time.Second), throughput(fi.Size(), time.Since(started)))
 
 	if len(exts) > 0 {
 		body := []byte(strings.Join(exts, "\n") + "\n")
@@ -191,4 +199,14 @@ func uploadDump(ctx context.Context, b storage.JobBucket, key, dumpPath, sum str
 		return fmt.Errorf("upload checksum: %w", err)
 	}
 	return nil
+}
+
+// throughput — «N MiB, X MiB/s» для логов: по ним видно, что тормозит — pg_dump
+// или заливка.
+func throughput(size int64, d time.Duration) string {
+	mib := float64(size) / (1 << 20)
+	if d <= 0 {
+		return fmt.Sprintf("%.1f MiB", mib)
+	}
+	return fmt.Sprintf("%.1f MiB, %.1f MiB/s", mib, mib/d.Seconds())
 }
