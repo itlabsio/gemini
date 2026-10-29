@@ -108,6 +108,18 @@ function SelectItem({
   );
 }
 
+function SelectSeparator({
+  className,
+  ...props
+}: ComponentProps<typeof SelectPrimitive.Separator>) {
+  return (
+    <SelectPrimitive.Separator
+      className={cn("pointer-events-none -mx-1 my-1 h-px bg-border", className)}
+      {...props}
+    />
+  );
+}
+
 export {
   Select,
   SelectGroup,
@@ -115,4 +127,5 @@ export {
   SelectTrigger,
   SelectContent,
   SelectItem,
+  SelectSeparator,
 };

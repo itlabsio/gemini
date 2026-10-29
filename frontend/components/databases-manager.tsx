@@ -32,6 +32,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -94,6 +95,13 @@ function groupByDb(runs: BackupRun[]): Map<string, BackupRun[]> {
 }
 
 const NO_RUNS: BackupRun[] = [];
+
+// Один размер для всех состояний колонки «Статус / запуск» — бейджи, кнопка
+// «Запустить» и running/«Остановить» не дёргают ширину таблицы при смене.
+const STATUS_SLOT = "h-7 w-32 justify-center";
+
+// Подсказка к серым (унаследованным) значениям хранилища.
+const INHERITED_HINT = "Из Настроек — меняется там для всех баз";
 
 export function DatabasesManager({
   instanceId,
@@ -352,10 +360,10 @@ function Row({
 
   // На Source у каждой базы есть CronJob; он suspended, если база выключена
   // или не задан schedule_cron — авто-бэкапа нет.
-  const suspended =
-    headRole === "source" &&
-    db.present &&
-    (!db.enabled || !(db.schedule_cron ?? "").trim());
+  const noCron = !(db.schedule_cron ?? "").trim();
+  const suspended = headRole === "source" && db.present && (!db.enabled || noCron);
+  // Тумблер только разрешает запуск; без крона бэкап идёт лишь по кнопке.
+  const manualOnly = headRole === "source" && db.enabled && noCron;
 
   return (
     <TableRow className={cn(!db.present && "opacity-50")}>
@@ -382,9 +390,23 @@ function Row({
               )
             }
           />
-          <span className="text-sm text-muted-foreground">
-            {db.enabled ? "включён" : "выключен"}
-          </span>
+          {headRole !== "source" ? (
+            <span className="text-sm text-muted-foreground">
+              {db.enabled ? "включён" : "выключен"}
+            </span>
+          ) : !db.enabled ? null : manualOnly ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="cursor-help text-sm text-warning">вручную</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                Расписание не задано — автоматического бэкапа нет, только кнопка
+                «Запустить»
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <span className="text-sm text-muted-foreground">по расписанию</span>
+          )}
         </div>
       </TableCell>
 
@@ -439,13 +461,22 @@ function Row({
             onValueChange={(v) => setStType(v === "default" ? "" : (v as "ephemeral" | "emptydir"))}
             disabled={!canEdit || disabled}
           >
-            <SelectTrigger size="sm" className="w-[11.5rem]">
-              <SelectValue />
+            <SelectTrigger
+              size="sm"
+              title={stType ? undefined : INHERITED_HINT}
+              className={cn("w-36", !stType && "text-muted-foreground")}
+            >
+              {/* В триггере — само значение; «наследуется» передаёт серый цвет. */}
+              <SelectValue>
+                {STORAGE_LABEL[stType || defaultStorageType] ?? (stType || defaultStorageType || "—")}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="default">
-                {defaultStorageType ? `по умолч. (${STORAGE_LABEL[defaultStorageType] ?? defaultStorageType})` : "по умолчанию"}
+                Как в настройках
+                {defaultStorageType && ` · ${STORAGE_LABEL[defaultStorageType] ?? defaultStorageType}`}
               </SelectItem>
+              <SelectSeparator />
               <SelectItem value="ephemeral">ephemeral PVC</SelectItem>
               <SelectItem value="emptydir">emptyDir</SelectItem>
             </SelectContent>
@@ -455,9 +486,9 @@ function Row({
               value={stSize}
               onChange={(e) => setStSize(e.target.value)}
               disabled={!canEdit || disabled}
-              placeholder={defaultStorageSize || "по умолч."}
+              placeholder={defaultStorageSize || "—"}
               aria-invalid={Boolean(sizeErr)}
-              title={sizeErr ?? undefined}
+              title={sizeErr ?? (stSize ? undefined : INHERITED_HINT)}
               className="h-8 w-20 text-xs"
             />
             {sizeErr && (
@@ -518,13 +549,16 @@ function Row({
               dbName={db.db_name}
               disabled={disabled}
               onStop={() => onStop(activeRun)}
+              className={STATUS_SLOT}
             />
           ) : running ? (
-            <StatusBadge status={activeRun?.status} />
+            <StatusBadge status={activeRun?.status} className={STATUS_SLOT} />
           ) : canRun && db.enabled && missingRestoreUser ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Badge variant="warning">нет пользователя</Badge>
+                <Badge variant="warning" className={STATUS_SLOT}>
+                  нет пользователя
+                </Badge>
               </TooltipTrigger>
               <TooltipContent>
                 Инстанс в режиме «пользователь на базу» — задайте пользователя restore
@@ -541,6 +575,7 @@ function Row({
                 )
               }
               disabled={disabled}
+              className={STATUS_SLOT}
             >
               <Play />
               Запустить
@@ -548,7 +583,7 @@ function Row({
           ) : suspended ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Badge variant="warning" className="gap-1">
+                <Badge variant="warning" className={cn("gap-1", STATUS_SLOT)}>
                   <Pause />
                   suspend
                 </Badge>

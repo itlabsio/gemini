@@ -6,6 +6,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 type BadgeVariant = "success" | "destructive" | "info" | "warning" | "secondary";
 
@@ -19,12 +20,18 @@ const MAP: Record<string, { variant: BadgeVariant; icon: LucideIcon }> = {
 };
 
 /** Бейдж статуса прогона / связи / пира с иконкой и цветом. */
-export function StatusBadge({ status }: { status?: string | null }) {
+export function StatusBadge({
+  status,
+  className,
+}: {
+  status?: string | null;
+  className?: string;
+}) {
   if (!status) return <span className="text-muted-foreground">—</span>;
   const cfg = MAP[status] ?? { variant: "secondary" as const, icon: CircleDashed };
   const Icon = cfg.icon;
   return (
-    <Badge variant={cfg.variant} className="gap-1">
+    <Badge variant={cfg.variant} className={cn("gap-1", className)}>
       <Icon className={status === "running" ? "animate-spin" : undefined} />
       {status}
     </Badge>

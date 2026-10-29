@@ -25,12 +25,14 @@ export function RunningStopButton({
   dbName,
   disabled,
   onStop,
+  className,
 }: {
   status: string;
   kind: string;
   dbName: string;
   disabled?: boolean;
   onStop: () => void;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const isRestore = kind === "restore";
@@ -44,7 +46,7 @@ export function RunningStopButton({
         disabled={disabled}
         title="Остановить прогон"
         className={cn(
-          "group inline-flex min-w-[7.5rem] items-center justify-center gap-1 rounded-md border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-colors",
+          "group inline-flex items-center justify-center gap-1 rounded-md border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-colors",
           "focus-visible:ring-[3px] focus-visible:ring-destructive/40 focus-visible:outline-none",
           "disabled:pointer-events-none disabled:opacity-50",
           status === "running"
@@ -52,6 +54,7 @@ export function RunningStopButton({
             : "bg-warning/15 text-warning dark:bg-warning/20",
           "hover:bg-destructive hover:text-destructive-foreground focus-visible:bg-destructive focus-visible:text-destructive-foreground",
           "[&_svg]:size-3",
+          className,
         )}
       >
         <span className="inline-flex items-center gap-1 group-hover:hidden group-focus-visible:hidden">

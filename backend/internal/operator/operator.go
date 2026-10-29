@@ -243,7 +243,7 @@ func (o *Operator) StartDump(ctx context.Context, db *model.Database, trigger mo
 		map[string]string{"GEMINI_RUN_ID": run.ID, "S3_OBJECT_KEY": objectKey},
 	)
 	if err != nil {
-		o.failRun(ctx, run.ID, db.DBName, model.KindDump, err.Error())
+		o.failRun(ctx, run.ID, db, model.KindDump, err.Error())
 		return nil, err
 	}
 
@@ -388,7 +388,7 @@ func (o *Operator) StartRestore(ctx context.Context, m *model.DatabaseMapping, s
 		jobEnv,
 	)
 	if err != nil {
-		o.failRun(ctx, run.ID, target.DBName, model.KindRestore, err.Error())
+		o.failRun(ctx, run.ID, target, model.KindRestore, err.Error())
 		return nil, err
 	}
 	return o.store.UpdateRun(ctx, run.ID, store.RunUpdate{
@@ -396,15 +396,27 @@ func (o *Operator) StartRestore(ctx context.Context, m *model.DatabaseMapping, s
 	})
 }
 
-func (o *Operator) failRun(ctx context.Context, runID, dbName string, kind model.RunKind, msg string) {
+func (o *Operator) failRun(ctx context.Context, runID string, db *model.Database, kind model.RunKind, msg string) {
 	msg = notify.Sanitize(msg)
 	_, _ = o.store.UpdateRun(ctx, runID, store.RunUpdate{
 		Status: model.StatusFailed, ErrorMessage: &msg, MarkFinished: true,
 	})
-	o.notifyFailure(ctx, notify.Event{
-		HeadRole: string(o.cfg.Role), Kind: string(kind), Database: dbName,
-		RunID: runID, Error: msg, OccurredAt: time.Now(),
-	})
+	o.notifyFailure(ctx, o.runEvent(ctx, db, kind, runID, msg))
+}
+
+// runEvent собирает данные уведомления о прогоне базы db (может быть nil).
+func (o *Operator) runEvent(ctx context.Context, db *model.Database, kind model.RunKind, runID, errMsg string) notify.Event {
+	e := notify.Event{
+		HeadRole: string(o.cfg.Role), Kind: string(kind), RunID: runID,
+		Error: errMsg, OccurredAt: time.Now(),
+	}
+	if db != nil {
+		e.Database = db.DBName
+		if inst, err := o.store.GetInstance(ctx, db.InstanceID); err == nil {
+			e.Instance = inst.Name
+		}
+	}
+	return e
 }
 
 // notifyFailure / notifySuccess шлют уведомление, если такой исход включён в
@@ -712,10 +724,7 @@ func (o *Operator) onRunSucceeded(ctx context.Context, run model.BackupRun) {
 			o.notifyPeerRestoreStatus(ctx, updated, model.StatusSucceeded, "")
 		}
 	}
-	o.notifySuccess(ctx, notify.Event{
-		HeadRole: string(o.cfg.Role), Kind: string(run.Kind), Database: db.DBName,
-		RunID: run.ID, OccurredAt: time.Now(),
-	})
+	o.notifySuccess(ctx, o.runEvent(ctx, db, run.Kind, run.ID, ""))
 }
 
 func (o *Operator) onRunFailed(ctx context.Context, run model.BackupRun, msg string) {
@@ -733,14 +742,7 @@ func (o *Operator) onRunFailed(ctx context.Context, run model.BackupRun, msg str
 	log.Printf("operator: run %s (%s) failed — job %s: %s", run.ID, run.Kind, run.K8sJobName, msg)
 
 	db, _ := o.store.GetDatabase(ctx, run.DatabaseID)
-	dbName := ""
-	if db != nil {
-		dbName = db.DBName
-	}
-	o.notifyFailure(ctx, notify.Event{
-		HeadRole: string(o.cfg.Role), Kind: string(run.Kind), Database: dbName,
-		RunID: run.ID, Error: msg, OccurredAt: time.Now(),
-	})
+	o.notifyFailure(ctx, o.runEvent(ctx, db, run.Kind, run.ID, msg))
 	if run.Kind == model.KindRestore && o.cfg.IsTarget() {
 		o.notifyPeerRestoreStatus(ctx, updated, model.StatusFailed, msg)
 	}
@@ -781,11 +783,8 @@ func (o *Operator) signDump(ctx context.Context, db *model.Database, run *model.
 		log.Printf("operator: signed dump %s", c.Object(run.S3ObjectKey))
 	}
 	if len(missing) > 0 {
-		o.notifyFailure(ctx, notify.Event{
-			HeadRole: string(o.cfg.Role), Kind: string(model.KindDump), Database: db.DBName, RunID: run.ID,
-			Error:      "дамп не залит в бакет(ы): " + strings.Join(missing, ", ") + " — см. лог dump-Job'а",
-			OccurredAt: time.Now(),
-		})
+		o.notifyFailure(ctx, o.runEvent(ctx, db, model.KindDump, run.ID,
+			"дамп не залит в бакет(ы): "+strings.Join(missing, ", ")+" — см. лог dump-Job'а"))
 	}
 }
 

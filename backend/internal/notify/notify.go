@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/config"
@@ -31,6 +32,7 @@ func New(cfg config.NotifyConfig) *Notifier {
 type Event struct {
 	HeadRole   string
 	Kind       string // dump | restore
+	Instance   string // имя инстанса PostgreSQL; пусто → строка не выводится
 	Database   string
 	RunID      string
 	Error      string // пусто у Success
@@ -39,19 +41,24 @@ type Event struct {
 
 // Failure отправляет уведомление о провале прогона.
 func (n *Notifier) Failure(ctx context.Context, e Event) error {
-	return n.send(ctx, fmt.Sprintf(
-		"🔴 Gemini/%s: %s FAILED\nБаза: %s\nRun: %s\nВремя: %s\nОшибка: %s",
-		e.HeadRole, e.Kind, e.Database, e.RunID,
-		e.OccurredAt.Format(time.RFC3339), Sanitize(e.Error),
-	))
+	return n.send(ctx, fmt.Sprintf("❌ Gemini/%s: %s FAILED\n\n%sОшибка: %s",
+		e.HeadRole, e.Kind, e.details(), Sanitize(e.Error)))
 }
 
 // Success отправляет уведомление об успешном прогоне.
 func (n *Notifier) Success(ctx context.Context, e Event) error {
-	return n.send(ctx, fmt.Sprintf(
-		"🟢 Gemini/%s: %s OK\nБаза: %s\nRun: %s\nВремя: %s",
-		e.HeadRole, e.Kind, e.Database, e.RunID, e.OccurredAt.Format(time.RFC3339),
-	))
+	return n.send(ctx, fmt.Sprintf("✅ Gemini/%s: %s OK\n\n%s",
+		e.HeadRole, e.Kind, strings.TrimSuffix(e.details(), "\n")))
+}
+
+// details — общий блок сообщения: инстанс, база, run, время (каждое с \n).
+func (e Event) details() string {
+	var b strings.Builder
+	if e.Instance != "" {
+		fmt.Fprintf(&b, "Инстанс: %s\n", e.Instance)
+	}
+	fmt.Fprintf(&b, "База: %s\nRun: %s\nВремя: %s\n", e.Database, e.RunID, e.OccurredAt.Format(time.RFC3339))
+	return b.String()
 }
 
 func (n *Notifier) send(ctx context.Context, text string) error {
