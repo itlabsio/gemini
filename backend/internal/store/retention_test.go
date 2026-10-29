@@ -66,10 +66,10 @@ func TestPruneRunsKeepsLatestAndActive(t *testing.T) {
 
 func TestPruneAudit(t *testing.T) {
 	s, ctx := testStore(t)
-	if err := s.WriteAudit(ctx, "tester", "prune.old", "", nil); err != nil {
+	if err := s.WriteAudit(ctx, AuditEntry{Actor: "tester", Action: "prune.old"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.WriteAudit(ctx, "tester", "prune.fresh", "", nil); err != nil {
+	if err := s.WriteAudit(ctx, AuditEntry{Actor: "tester", Action: "prune.fresh"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.pool.Exec(ctx, `UPDATE audit_log SET created_at = NOW() - interval '400 days' WHERE action = 'prune.old'`); err != nil {

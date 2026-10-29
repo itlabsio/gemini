@@ -24,7 +24,7 @@
 | Секреты кред в k8s | `k8s/secrets.go`, `operator.go` (`resolveCreds`, `upsertInstanceCreds`, `upsertDatabaseCreds`), Vault — `vault/vault.go` |
 | S3: несколько бакетов, fan-out | `storage/pool.go`, `storage/storage.go`, `api/s3buckets.go`, `store/s3buckets.go` |
 | Discovery баз и ролей | `discovery/discovery.go`, `api/instances.go` (`discoverInstance`, `listInstanceRoles`) |
-| Аутентификация/RBAC (superuser + роль в проекте из `groups`) | `auth/auth.go` (`Identity.Can`, `parseGroups`), `api/rbac.go` (`authorizeInstance/Database`, проекты), `api/me.go` |
+| Аутентификация/RBAC (client-роли superuser/security + роль в проекте из `groups`) | `auth/auth.go` (`clientRoles`, `Identity.Can`, `parseGroups`), `api/rbac.go` (`authorizeInstance/Database`, проекты), `api/me.go` |
 | Шифрование секретов в БД метаданных | `secretcrypto/secretcrypto.go` (`SECRET_ENCRYPTION_KEY`) |
 | Leader election, фоновые циклы | `k8s/leader.go`, `cmd/gemini/main.go` (`runServe`, `background`, `leaseName`) |
 | Env-переменные backend'а | `config/config.go`, пример `backend/.env.local.example` |
@@ -50,7 +50,7 @@
 `Instance` (сервер PostgreSQL) → `Database` (бэкапится/нет, cron) → `BackupRun` (kind dump|restore, trigger,
 `event_key` для идемпотентности). Target: `DatabaseMapping` (source external_id ↔ локальная `Database`,
 `s3_prefix`, `target_owner`). `HeadPairing`/`PairingSecret` — связь source↔target. `S3Bucket`, `Settings`, `Project` (RBAC; `instances.project`).
-Миграции пронумерованы `001…023`; следующая — `024_*.sql`.
+Миграции пронумерованы `001…024`; следующая — `025_*.sql`.
 
 ### Потоки
 - **Backup (source):** CronJob/ручной запуск → `StartDump` → Job → `runDump` → S3 (`.dump`, `.sha256`, extensions)

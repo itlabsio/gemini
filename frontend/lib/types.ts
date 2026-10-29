@@ -176,6 +176,8 @@ export interface Me {
   subject: string;
   email: string;
   superuser: boolean;
+  /** Client-роль security (ИБ): только журнал аудита */
+  security: boolean;
   /** Роль в каждом проекте (из групп Keycloak "/<project>/<role>"). */
   projects: Record<string, ProjectRole>;
   /** Target: есть ли активная пара с Source (список pairings — только superuser). */

@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import type {
   BackupRun,
@@ -33,12 +34,28 @@ async function accessToken(): Promise<string> {
   return session.accessToken;
 }
 
+/**
+ * IP и User-Agent пользователя для журнала аудита backend'а: запрос к нему идёт
+ * с сервера Next.js, и без пересылки backend видел бы под frontend'а и «node».
+ * X-Real-IP ставит ingress (nginx перезаписывает присланный клиентом).
+ */
+async function clientHeaders(): Promise<Record<string, string>> {
+  const h = await headers();
+  const out: Record<string, string> = {};
+  const ip = h.get("x-real-ip");
+  const ua = h.get("user-agent");
+  if (ip) out["X-Real-IP"] = ip;
+  if (ua) out["User-Agent"] = ua;
+  return out;
+}
+
 async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await accessToken();
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(await clientHeaders()),
       Authorization: `Bearer ${token}`,
       ...init.headers,
     },

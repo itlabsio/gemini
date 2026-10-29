@@ -35,9 +35,15 @@ var rank = map[Role]int{RoleViewer: 1, RoleOperator: 2, RoleAdmin: 3}
 // AtLeast сообщает, покрывает ли роль r требуемый минимум min.
 func (r Role) AtLeast(min Role) bool { return rank[r] >= rank[min] }
 
-// roleSuperuser — client-роль Keycloak, дающая полный доступ к инстансу Gemini.
-// Остальные роли приходят только из групп (см. parseGroups).
-const roleSuperuser = "superuser"
+// clientRoles — client-роли Keycloak (resource_access.<ClientID>.roles) и флаг
+// Identity, который каждая из них выставляет. Проектные роли приходят только из
+// групп (см. parseGroups).
+//   - superuser — полный доступ к инстансу Gemini;
+//   - security — ИБ: только чтение журнала аудита.
+var clientRoles = map[string]func(*Identity){
+	"superuser": func(id *Identity) { id.Superuser = true },
+	"security":  func(id *Identity) { id.Security = true },
+}
 
 // groupRoles — как имена сегментов группы Keycloak ("/<project>/<role>")
 // отображаются в роли Gemini.
@@ -54,6 +60,8 @@ type Identity struct {
 	Subject   string
 	Email     string
 	Superuser bool
+	// Security — client-роль security: читает журнал аудита, больше ничего.
+	Security bool
 	// Projects — роль пользователя в каждом проекте (из claim groups).
 	Projects map[string]Role
 }
@@ -117,6 +125,11 @@ func WithIdentity(ctx context.Context, id Identity) context.Context {
 type Verifier struct {
 	cfg    config.OIDCConfig
 	keyset jwk.Set // самообновляющийся CachedSet
+
+	// OnForbidden, если задан, вызывается, когда Middleware отказывает валидному
+	// токену без доступа к Gemini, — для журнала аудита (Identity в контекст
+	// запроса в этом случае не попадает).
+	OnForbidden func(r *http.Request, id Identity, reason string)
 }
 
 // NewVerifier регистрирует JWKS-эндпоинт Keycloak и делает первичную загрузку ключей.
@@ -176,19 +189,24 @@ func audienceMatches(tok jwt.Token, clientID string) bool {
 	return false
 }
 
-// isSuperuser смотрит ТОЛЬКО resource_access.<ClientID>.roles (client-роли
-// клиента инстанса Gemini). realm-роли сознательно не учитываются — иначе
-// realm-роль "superuser" у realm-администратора давала бы полный доступ в Gemini.
-func (v *Verifier) isSuperuser(tok jwt.Token) bool {
+// applyClientRoles выставляет флаги Identity по clientRoles. Смотрит ТОЛЬКО
+// resource_access.<ClientID>.roles (client-роли клиента инстанса Gemini).
+// realm-роли сознательно не учитываются — иначе realm-роль "superuser" у
+// realm-администратора давала бы полный доступ в Gemini.
+func (v *Verifier) applyClientRoles(tok jwt.Token, id *Identity) {
 	var resourceAccess map[string]any
 	if err := tok.Get("resource_access", &resourceAccess); err != nil {
-		return false
+		return
 	}
 	client, ok := resourceAccess[v.cfg.ClientID]
 	if !ok {
-		return false
+		return
 	}
-	return slices.Contains(stringsFrom(client, "roles"), roleSuperuser)
+	for _, role := range stringsFrom(client, "roles") {
+		if set, ok := clientRoles[role]; ok {
+			set(id)
+		}
+	}
 }
 
 // groupsClaim достаёт claim groups. jwx кладёт JSON-массив как []any, поэтому
@@ -268,16 +286,20 @@ func (v *Verifier) Middleware(next http.Handler) http.Handler {
 			writeErr(w, http.StatusUnauthorized, "invalid or expired token")
 			return
 		}
-		id := Identity{Superuser: v.isSuperuser(tok), Projects: parseGroups(groupsClaim(tok))}
-		if !id.Superuser && len(id.Projects) == 0 {
-			writeErr(w, http.StatusForbidden,
-				"no gemini access: need superuser role or membership in a project group (/<project>/<role>)")
-			return
-		}
+		id := Identity{Projects: parseGroups(groupsClaim(tok))}
+		v.applyClientRoles(tok, &id)
 		id.Subject, _ = tok.Subject()
 		var email string
 		if err := tok.Get("email", &email); err == nil {
 			id.Email = email
+		}
+		if !id.Superuser && !id.Security && len(id.Projects) == 0 {
+			const reason = "no gemini access: need superuser or security role, or membership in a project group (/<project>/<role>)"
+			if v.OnForbidden != nil {
+				v.OnForbidden(r, id, reason)
+			}
+			writeErr(w, http.StatusForbidden, reason)
+			return
 		}
 		ctx := WithIdentity(r.Context(), id)
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -294,6 +316,22 @@ func RequireSuperuser(h http.HandlerFunc) http.HandlerFunc {
 		}
 		if !id.Superuser {
 			writeErr(w, http.StatusForbidden, "superuser role required")
+			return
+		}
+		h(w, r)
+	}
+}
+
+// RequireAuditReader — журнал аудита: superuser или security.
+func RequireAuditReader(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := FromContext(r.Context())
+		if !ok {
+			writeErr(w, http.StatusUnauthorized, "unauthenticated")
+			return
+		}
+		if !id.Superuser && !id.Security {
+			writeErr(w, http.StatusForbidden, "superuser or security role required")
 			return
 		}
 		h(w, r)

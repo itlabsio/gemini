@@ -21,6 +21,9 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	if id.Superuser {
 		roles = append(roles, "superuser")
 	}
+	if id.Security {
+		roles = append(roles, "security")
+	}
 	for p, role := range id.Projects {
 		roles = append(roles, p+":"+string(role))
 	}
@@ -47,6 +50,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		"subject":         id.Subject,
 		"email":           id.Email,
 		"superuser":       id.Superuser,
+		"security":        id.Security,
 		"projects":        id.Projects,
 		"head_role":       s.d.Cfg.Role,
 		"vault_enabled":   s.d.Cfg.Vault.Enabled,

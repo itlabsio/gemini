@@ -15,19 +15,26 @@ import (
 // структур): тип значений, которые отдаёт jwx, влияет на извлечение.
 func TestClaimsFromToken(t *testing.T) {
 	raw := `{"azp":"gemini",
-		"resource_access":{"gemini":{"roles":["superuser"]},"other":{"roles":["superuser"]}},
+		"resource_access":{"gemini":{"roles":["superuser"]},"other":{"roles":["superuser","security"]}},
 		"groups":["/admin","/proj/developer","/proj2/admin"]}`
 	tok, err := jwt.ParseInsecure([]byte(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
-	v := &Verifier{cfg: config.OIDCConfig{ClientID: "gemini"}}
-	if !v.isSuperuser(tok) {
-		t.Error("superuser role of own client must be recognized")
+	rolesFor := func(clientID string) Identity {
+		var id Identity
+		(&Verifier{cfg: config.OIDCConfig{ClientID: clientID}}).applyClientRoles(tok, &id)
+		return id
 	}
-	other := &Verifier{cfg: config.OIDCConfig{ClientID: "nope"}}
-	if other.isSuperuser(tok) {
-		t.Error("superuser role of a foreign client must not count")
+	// Роли считаются только у своего клиента: у gemini — superuser, у other — оба.
+	if got := rolesFor("gemini"); !got.Superuser || got.Security {
+		t.Errorf("client gemini: %+v, want superuser only", got)
+	}
+	if got := rolesFor("other"); !got.Superuser || !got.Security {
+		t.Errorf("client other: %+v, want superuser and security", got)
+	}
+	if got := rolesFor("nope"); got.Superuser || got.Security {
+		t.Errorf("foreign client roles must not count: %+v", got)
 	}
 	want := map[string]Role{"proj": RoleOperator, "proj2": RoleAdmin}
 	if got := parseGroups(groupsClaim(tok)); !reflect.DeepEqual(got, want) {
@@ -100,5 +107,16 @@ func TestRequireSuperuserAndAnyProject(t *testing.T) {
 	}
 	if run(RequireAnyProject(RoleViewer, ok), viewer) != http.StatusOK {
 		t.Error("viewer must pass RequireAnyProject(viewer)")
+	}
+
+	sec := Identity{Security: true}
+	if run(RequireAuditReader(ok), sec) != http.StatusOK || run(RequireAuditReader(ok), su) != http.StatusOK {
+		t.Error("security and superuser must pass RequireAuditReader")
+	}
+	if run(RequireAuditReader(ok), admin) != http.StatusForbidden {
+		t.Error("project admin must not pass RequireAuditReader")
+	}
+	if run(RequireAnyProject(RoleViewer, ok), sec) != http.StatusForbidden || run(RequireSuperuser(ok), sec) != http.StatusForbidden {
+		t.Error("security must not pass project or superuser gates")
 	}
 }

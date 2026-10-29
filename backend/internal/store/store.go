@@ -57,14 +57,25 @@ func mapErr(err error) error {
 	return err
 }
 
+// AuditEntry — строка журнала аудита.
+type AuditEntry struct {
+	Actor     string
+	Action    string
+	Target    string
+	Detail    []byte // JSON; пусто → {}
+	IP        string
+	UserAgent string
+}
+
 // WriteAudit пишет строку в audit_log (best-effort, ошибки только логируются вызывающим).
-func (s *Store) WriteAudit(ctx context.Context, actor, action, target string, detailJSON []byte) error {
-	if len(detailJSON) == 0 {
-		detailJSON = []byte("{}")
+func (s *Store) WriteAudit(ctx context.Context, e AuditEntry) error {
+	if len(e.Detail) == 0 {
+		e.Detail = []byte("{}")
 	}
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO audit_log (actor, action, target, detail) VALUES ($1, $2, $3, $4)`,
-		actor, action, target, string(detailJSON))
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO audit_log (actor, action, target, detail, ip, user_agent)
+		VALUES ($1, $2, $3, $4, $5, $6)`,
+		e.Actor, e.Action, e.Target, string(e.Detail), e.IP, e.UserAgent)
 	return err
 }
 

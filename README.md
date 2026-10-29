@@ -65,11 +65,14 @@
 ## Доступ
 
 Аутентификация — OIDC (Keycloak). Frontend логинится через next-auth
-(code + PKCE), backend проверяет JWT. Права складываются из двух источников:
+(code + PKCE), backend проверяет JWT. Права складываются из client-ролей и групп:
 
 - **superuser** — client-роль `superuser` в `resource_access.<OIDC_CLIENT_ID>.roles`.
   Управляет всем инстансом Gemini: проекты, создание инстансов и назначение им
   проекта, pairing, настройки, S3-бакеты. Видит все инстансы.
+- **security** — client-роль `security` там же. Для ИБ: только чтение журнала
+  аудита (страница «Аудит»), больше ничего. У source и target журналы свои —
+  роль нужна в клиенте каждого инстанса Gemini.
 - **роль в проекте** — из claim `groups` (в Keycloak включить **Full group path**):
   группа `/<проект>/<роль>`. Проект — первый сегмент пути, роль — одно из
   `admin`, `developer` (= operator), `readonly` (= viewer). Одному пользователю
@@ -111,7 +114,7 @@ helm/examples/      values-source.yaml, values-target.yaml
 ## Локальный запуск
 
 Нужны Go 1.27, bun 1.4, PostgreSQL с `pgcrypto` для метаданных и Keycloak
-(или другой OIDC-провайдер) с клиентом, client-ролью `superuser` и группами `/<проект>/<admin|developer|readonly>`.
+(или другой OIDC-провайдер) с клиентом, client-ролями `superuser` (и при необходимости `security`) и группами `/<проект>/<admin|developer|readonly>`.
 Для запуска прогонов нужен доступ к кластеру — используется `~/.kube/config`;
 без него API работает, но оркестрация Job'ов отключена.
 

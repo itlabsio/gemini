@@ -1,9 +1,7 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"strings"
 
@@ -53,20 +51,4 @@ func firstField(s string) string {
 		return s[:i]
 	}
 	return s
-}
-
-// audit пишет строку в audit_log от имени текущего пользователя (best-effort).
-func (s *Server) audit(r *http.Request, action, target string, detail map[string]any) {
-	id, _ := auth.FromContext(r.Context())
-	actor := id.Email
-	if actor == "" {
-		actor = id.Subject
-	}
-	var raw []byte
-	if detail != nil {
-		raw, _ = json.Marshal(detail)
-	}
-	if err := s.d.Store.WriteAudit(r.Context(), actor, action, target, raw); err != nil {
-		log.Printf("api: audit write failed: %v", err)
-	}
 }

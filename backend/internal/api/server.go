@@ -57,7 +57,10 @@ func NewRouter(d Deps) http.Handler {
 
 	// --- Эндпоинты для людей ---
 	apiR := r.PathPrefix("/api").Subrouter()
-	apiR.Use(d.Verifier.Middleware)
+	if d.Verifier != nil { // nil — только в тестах роутера без /api
+		d.Verifier.OnForbidden = s.auditForbidden
+	}
+	apiR.Use(d.Verifier.Middleware, s.auditDenied)
 
 	apiR.HandleFunc("/me", s.me).Methods(http.MethodGet)
 
