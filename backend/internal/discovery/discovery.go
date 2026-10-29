@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -18,7 +19,13 @@ import (
 // Yandex MDB недоступна через пул, а бэкап её не нужен и в self-hosted.
 var BuiltinExcluded = []string{"postgres"}
 
-// Filter отбрасывает встроенные исключения и заданные для инстанса базы.
+// recreateLeftover — копия базы, которую restore в режиме recreate держит под
+// именем <база>_old_<ts> до конца наката (jobrunner.restoreRecreate). Это
+// служебная база Gemini: бэкапить и показывать её не нужно.
+var recreateLeftover = regexp.MustCompile(`_old_\d{8}t\d{6}z$`)
+
+// Filter отбрасывает встроенные исключения, заданные для инстанса базы и
+// оставшиеся от restore копии <база>_old_<ts>.
 func Filter(names, instanceExcluded []string) []string {
 	skip := make(map[string]struct{}, len(BuiltinExcluded)+len(instanceExcluded))
 	for _, n := range BuiltinExcluded {
@@ -31,7 +38,7 @@ func Filter(names, instanceExcluded []string) []string {
 	}
 	out := make([]string, 0, len(names))
 	for _, n := range names {
-		if _, ok := skip[n]; ok {
+		if _, ok := skip[n]; ok || recreateLeftover.MatchString(n) {
 			continue
 		}
 		out = append(out, n)

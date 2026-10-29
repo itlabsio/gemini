@@ -243,3 +243,23 @@ func itoa(n int) string {
 	}
 	return string(b[i:])
 }
+
+// DeleteAbsentDatabase удаляет запись базы, пропавшей из discovery, вместе с
+// журналом запусков и кредами restore (каскад). Присутствующую базу или базу с
+// активным прогоном не трогает — ErrConflict. Сопоставление на неё запрещает
+// удаление на уровне FK; вызывающий проверяет его заранее.
+func (s *Store) DeleteAbsentDatabase(ctx context.Context, id string) error {
+	ct, err := s.pool.Exec(ctx, `
+		DELETE FROM databases d
+		WHERE d.id = $1 AND NOT d.present
+		  AND NOT EXISTS (
+		      SELECT 1 FROM backup_runs r
+		      WHERE r.database_id = d.id AND r.status IN ('pending','running'))`, id)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrConflict
+	}
+	return nil
+}

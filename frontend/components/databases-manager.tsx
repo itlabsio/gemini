@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Pause, Play, RefreshCw, ScrollText } from "lucide-react";
+import { ChevronRight, Pause, Play, RefreshCw, ScrollText } from "lucide-react";
 import type { BackupRun, Database, RestoreMode } from "@/lib/types";
 import {
   activeRunsAction,
   cancelRunAction,
+  deleteDatabaseAction,
   discoverAction,
   loadLoginRolesAction,
   patchDatabaseAction,
@@ -20,6 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/status-badge";
 import { RunningStopButton } from "@/components/running-stop-button";
+import { DeleteDatabaseButton } from "@/components/delete-database-button";
 import { RunHistoryStrip } from "@/components/run-history-strip";
 import {
   bytesQuantityError,
@@ -146,6 +148,13 @@ export function DatabasesManager({
     setPolled(null);
   }
 
+  // Удалённые с сервера базы хранятся ради журнала и настроек на случай
+  // возврата — показываем их свёрнутым блоком под основными.
+  const presentDbs = databases.filter((d) => d.present);
+  const deletedDbs = databases.filter((d) => !d.present);
+  const [showDeleted, setShowDeleted] = useState(false);
+  const colCount = 5 + (headRole === "source" ? 1 : 0) + (perDB ? 1 : 0);
+
   const activeByDb = polled ?? indexByDb(initialActiveRuns);
   const recentByDb = groupByDb(recentRuns);
 
@@ -232,6 +241,26 @@ export function DatabasesManager({
       router.refresh();
     });
 
+  const renderRow = (db: Database) => (
+    <Row
+      key={db.id}
+      db={db}
+      instanceId={instanceId}
+      headRole={headRole}
+      perDB={perDB}
+      loginRoles={loginRoles}
+      canEdit={canEdit}
+      canRun={canRun}
+      disabled={pending}
+      activeRun={activeByDb.get(db.id)}
+      recentRuns={recentByDb.get(db.id) ?? NO_RUNS}
+      defaultStorageSize={defaultStorageSize}
+      defaultStorageType={defaultStorageType}
+      run={run}
+      onStop={stopRun}
+    />
+  );
+
   return (
     <section
       className={cn(
@@ -280,25 +309,25 @@ export function DatabasesManager({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {databases.map((db) => (
-                <Row
-                  key={db.id}
-                  db={db}
-                  instanceId={instanceId}
-                  headRole={headRole}
-                  perDB={perDB}
-                  loginRoles={loginRoles}
-                  canEdit={canEdit}
-                  canRun={canRun}
-                  disabled={pending}
-                  activeRun={activeByDb.get(db.id)}
-                  recentRuns={recentByDb.get(db.id) ?? NO_RUNS}
-                  defaultStorageSize={defaultStorageSize}
-                  defaultStorageType={defaultStorageType}
-                  run={run}
-                  onStop={stopRun}
-                />
-              ))}
+              {presentDbs.map(renderRow)}
+              {deletedDbs.length > 0 && (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={colCount} className="py-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleted((v) => !v)}
+                      aria-expanded={showDeleted}
+                      className="inline-flex items-center gap-1 rounded-md px-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                    >
+                      <ChevronRight
+                        className={cn("size-4 transition-transform", showDeleted && "rotate-90")}
+                      />
+                      Удалённые ({deletedDbs.length})
+                    </button>
+                  </TableCell>
+                </TableRow>
+              )}
+              {showDeleted && deletedDbs.map(renderRow)}
             </TableBody>
           </Table>
         </div>
@@ -366,20 +395,21 @@ function Row({
   const manualOnly = headRole === "source" && db.enabled && noCron;
 
   return (
-    <TableRow className={cn(!db.present && "opacity-50")}>
+    // Удалённую базу приглушаем целиком, кроме кнопки «Удалить» в последней колонке.
+    <TableRow className={cn(!db.present && "[&>td:not(:last-child)]:opacity-50")}>
       <TableCell>
         <div className="flex items-center gap-2">
           <span className="font-medium">{db.db_name}</span>
           {!db.present && (
             <Badge variant="outline" className="text-muted-foreground">
-              исчезла
+              удалена
             </Badge>
           )}
         </div>
       </TableCell>
 
       <TableCell>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <Switch
             checked={db.enabled}
             disabled={!canEdit || disabled || running}
@@ -400,8 +430,8 @@ function Row({
                 <span className="cursor-help text-sm text-warning">вручную</span>
               </TooltipTrigger>
               <TooltipContent>
-                Расписание не задано — автоматического бэкапа нет, только кнопка
-                «Запустить»
+                Расписание не задано — автоматического бэкапа нет, только ручной
+                запуск
               </TooltipContent>
             </Tooltip>
           ) : (
@@ -553,6 +583,18 @@ function Row({
             />
           ) : running ? (
             <StatusBadge status={activeRun?.status} className={STATUS_SLOT} />
+          ) : !db.present ? (
+            canEdit && (
+              <DeleteDatabaseButton
+                dbName={db.db_name}
+                headRole={headRole}
+                disabled={disabled}
+                onDelete={() =>
+                  run(() => deleteDatabaseAction(instanceId, db.id), "База удалена из Gemini")
+                }
+                className={STATUS_SLOT}
+              />
+            )
           ) : canRun && db.enabled && missingRestoreUser ? (
             <Tooltip>
               <TooltipTrigger asChild>

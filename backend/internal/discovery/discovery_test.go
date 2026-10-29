@@ -28,6 +28,11 @@ func TestFilter(t *testing.T) {
 			want:     []string{"app"},
 		},
 		{
+			name: "recreate leftovers dropped, look-alikes kept",
+			in:   []string{"drivers_heatmap", "drivers_heatmap_old_20261012t181143z", "app_old", "app_old_2026"},
+			want: []string{"drivers_heatmap", "app_old", "app_old_2026"},
+		},
+		{
 			name: "nothing to drop",
 			in:   []string{"app", "billing"},
 			want: []string{"app", "billing"},

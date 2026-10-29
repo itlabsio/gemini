@@ -137,6 +137,8 @@ export const discoverInstance = (id: string) =>
  */
 export const listInstanceRoles = (id: string, loginOnly = false) =>
   apiFetch<string[]>(`/api/instances/${id}/roles${loginOnly ? "?login=true" : ""}`);
+export const deleteDatabase = (id: string) =>
+  apiFetch<void>(`/api/databases/${id}`, { method: "DELETE" });
 export const patchDatabase = (
   id: string,
   patch: {

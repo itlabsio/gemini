@@ -80,6 +80,7 @@ func NewRouter(d Deps) http.Handler {
 	apiR.HandleFunc("/vault/secret-keys", auth.RequireAnyProject(auth.RoleAdmin, s.vaultSecretKeys)).Methods(http.MethodPost)
 
 	apiR.HandleFunc("/databases/{id}", auth.RequireAnyProject(auth.RoleAdmin, s.patchDatabase)).Methods(http.MethodPatch)
+	apiR.HandleFunc("/databases/{id}", auth.RequireAnyProject(auth.RoleAdmin, s.deleteDatabase)).Methods(http.MethodDelete)
 	apiR.HandleFunc("/databases/{id}/run", auth.RequireAnyProject(auth.RoleOperator, s.runDatabase)).Methods(http.MethodPost)
 
 	apiR.HandleFunc("/runs", auth.RequireAnyProject(auth.RoleViewer, s.listRuns)).Methods(http.MethodGet)

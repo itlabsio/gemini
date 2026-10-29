@@ -185,6 +185,38 @@ func (s *Server) runDatabase(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, run)
 }
 
+// deleteDatabase убирает из Gemini запись удалённой (пропавшей из discovery)
+// базы вместе с её журналом запусков. CronJob и секреты кред подчистит
+// reconcileTemplates: удалённая база в них уже не участвует.
+func (s *Server) deleteDatabase(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	db, _, ok := s.authorizeDatabase(w, r, id, auth.RoleAdmin)
+	if !ok {
+		return
+	}
+	if db.Present {
+		writeError(w, http.StatusConflict, "database still exists on the server — only deleted databases can be removed")
+		return
+	}
+	if _, err := s.d.Store.MappingByTargetDatabaseID(r.Context(), id); err == nil {
+		writeError(w, http.StatusConflict, "database is used in a mapping — remove the mapping first")
+		return
+	} else if !errors.Is(err, store.ErrNotFound) {
+		writeStoreError(w, err)
+		return
+	}
+	if err := s.d.Store.DeleteAbsentDatabase(r.Context(), id); err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			writeError(w, http.StatusConflict, "database has an active run or reappeared on the server")
+			return
+		}
+		writeStoreError(w, err)
+		return
+	}
+	s.audit(r, "database.delete", id, map[string]any{"db_name": db.DBName, "instance_id": db.InstanceID})
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func writeRunStartError(w http.ResponseWriter, err error) {
 	switch {
 	case err == nil:

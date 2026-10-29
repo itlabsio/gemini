@@ -5,6 +5,7 @@ import {
   ApiError,
   cancelRun,
   createInstance,
+  deleteDatabase,
   deleteInstance,
   discoverInstance,
   listActiveRuns,
@@ -114,6 +115,17 @@ export async function patchDatabaseAction(
 ): Promise<Result> {
   try {
     await patchDatabase(databaseId, patch);
+    revalidatePath(`/instances/${instanceId}`);
+    return { ok: true };
+  } catch (e) {
+    return toResult(e);
+  }
+}
+
+/** Убирает запись удалённой с сервера базы вместе с журналом её запусков. */
+export async function deleteDatabaseAction(instanceId: string, databaseId: string): Promise<Result> {
+  try {
+    await deleteDatabase(databaseId);
     revalidatePath(`/instances/${instanceId}`);
     return { ok: true };
   } catch (e) {

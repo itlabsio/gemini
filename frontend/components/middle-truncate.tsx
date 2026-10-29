@@ -4,7 +4,10 @@ import { cn } from "@/lib/utils";
  * Усекает длинную строку по центру: `c-abc…yandexcloud.net:6432`.
  * Голова сжимается с многоточием, хвост (порт, имя секрета) виден всегда.
  * Родитель должен ограничивать ширину — компонент занимает не больше неё.
+ * Короткие строки (IP:порт) не режутся: голове просто нечего сжимать.
  */
+const MIN_HEAD = 16;
+
 export function MiddleTruncate({
   text,
   tail = 12,
@@ -14,7 +17,7 @@ export function MiddleTruncate({
   tail?: number;
   className?: string;
 }) {
-  const split = text.length > tail + 1 ? text.length - tail : 0;
+  const split = text.length > tail + MIN_HEAD ? text.length - tail : 0;
   const head = split ? text.slice(0, split) : text;
   const rest = split ? text.slice(split) : "";
   return (

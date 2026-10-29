@@ -105,7 +105,7 @@ export default async function InstanceDetailPage({ params }: Props) {
               value={
                 <MiddleTruncate
                   text={`${instance.host}:${instance.port}`}
-                  className="font-mono text-xs"
+                  className="tabular-nums"
                 />
               }
             />
