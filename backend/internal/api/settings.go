@@ -25,6 +25,12 @@ const (
 	maxPodStartTimeoutMinutes = 24 * 60
 )
 
+// Границы сроков хранения аудита и истории прогонов (дни) — как CHECK в миграции 023.
+const (
+	minRetentionDays = 14
+	maxRetentionDays = 3650
+)
+
 // settingsResponse — настройки плюс то, что действует при пустых полях: значения
 // из values чарта (job.*, JOB_POD_OVERRIDES). UI показывает их подсказками.
 type settingsResponse struct {
@@ -77,6 +83,9 @@ type settingsRequest struct {
 	// nil / не передан → текущее значение не меняется (старые клиенты).
 	NotifyOnFailure *bool `json:"notify_on_failure"`
 	NotifyOnSuccess *bool `json:"notify_on_success"`
+	// 0 / не передан → текущее значение не меняется (старые клиенты).
+	AuditRetentionDays int32 `json:"audit_retention_days"`
+	RunsRetentionDays  int32 `json:"runs_retention_days"`
 }
 
 // putSettings — админка: дефолты типа/размера временного хранилища, ресурсов и TTL Job'ов.
@@ -154,6 +163,20 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 			"job_ttl_minutes must be between %d and %d", minJobTTLMinutes, maxJobTTLMinutes))
 		return
 	}
+	auditDays, runsDays := req.AuditRetentionDays, req.RunsRetentionDays
+	if auditDays == 0 {
+		auditDays = cur.AuditRetentionDays
+	}
+	if runsDays == 0 {
+		runsDays = cur.RunsRetentionDays
+	}
+	for label, v := range map[string]int32{"audit_retention_days": auditDays, "runs_retention_days": runsDays} {
+		if v < minRetentionDays || v > maxRetentionDays {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf(
+				"%s must be between %d and %d", label, minRetentionDays, maxRetentionDays))
+			return
+		}
+	}
 	if podStart < minPodStartTimeoutMinutes || podStart > maxPodStartTimeoutMinutes {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf(
 			"job_pod_start_timeout_minutes must be between %d and %d", minPodStartTimeoutMinutes, maxPodStartTimeoutMinutes))
@@ -169,6 +192,8 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		JobPodStartTimeoutMinutes: podStart,
 		NotifyOnFailure:           onFailure,
 		NotifyOnSuccess:           onSuccess,
+		AuditRetentionDays:        auditDays,
+		RunsRetentionDays:         runsDays,
 	}, id)
 	if err != nil {
 		writeStoreError(w, err)

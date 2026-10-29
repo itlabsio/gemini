@@ -308,10 +308,14 @@ type Settings struct {
 	JobPodStartTimeoutMinutes int32 `json:"job_pod_start_timeout_minutes"`
 	// NotifyOnFailure / NotifyOnSuccess — на какие исходы dump/restore слать
 	// уведомления (канал — notify.* в чарте). По умолчанию только провалы.
-	NotifyOnFailure bool      `json:"notify_on_failure"`
-	NotifyOnSuccess bool      `json:"notify_on_success"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	UpdatedBy       string    `json:"updated_by"`
+	NotifyOnFailure bool `json:"notify_on_failure"`
+	NotifyOnSuccess bool `json:"notify_on_success"`
+	// AuditRetentionDays / RunsRetentionDays — сколько дней хранить журнал аудита
+	// и историю прогонов (активные и последний прогон вида по базе не удаляются).
+	AuditRetentionDays int32     `json:"audit_retention_days"`
+	RunsRetentionDays  int32     `json:"runs_retention_days"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	UpdatedBy          string    `json:"updated_by"`
 }
 
 // User — кэш последних логинов для аудита UI.

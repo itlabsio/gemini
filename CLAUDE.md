@@ -15,6 +15,7 @@
 | Запуск dump/restore, статусы прогонов | `operator/operator.go`: `StartDump`, `StartRestore`, `Watch`, `reconcileOnce`, `onRunSucceeded`, `onRunFailed`, `CancelRun` |
 | Расписание (CronJob'ы), шаблоны | `operator/scheduler.go` (`reconcileTemplates`), `operator.go:ensureCronJob`, `k8s/cronjobs.go` |
 | Fallback-поллинг S3 на target | `operator/poller.go` (`pollOnce` — берёт только **последний** дамп префикса) |
+| Сроки хранения аудита и прогонов | `operator/retention.go` (`RunRetention`), `store/retention.go` (`PruneRuns` не трогает активные и последний прогон вида по базе) |
 | Подпись и проверка дампов (ed25519) | `operator.go`: `signDump`, `BackfillSignatures`, `VerifiedDump`; примитивы — `peer/peer.go` (`SignArtifact`, `VerifyArtifact`, v1/v2) |
 | Webhook между инстансами Gemini | входящие: `api/webhook.go` (`backup-ready`, `restore-status`); исходящие: `operator.go` `notifyPeerBackupReady` / `notifyPeerRestoreStatus`; HMAC и retry — `peer/peer.go` |
 | Pairing | `api/pairing.go` (код → exchange), `store/pairing.go`, `store/identity.go`, UI `frontend/app/pairing` |
@@ -28,7 +29,7 @@
 | Leader election, фоновые циклы | `k8s/leader.go`, `cmd/gemini/main.go` (`runServe`, `background`, `leaseName`) |
 | Env-переменные backend'а | `config/config.go`, пример `backend/.env.local.example` |
 | Уведомления (провалы/успехи) | `notify/notify.go`, фильтр по настройкам — `operator.go` `notifyFailure`/`notifySuccess` |
-| Настройки (TTL, таймауты, scheduling) | `api/settings.go`, `store/settings.go`, миграции 004/006/015/016/022 |
+| Настройки (TTL, таймауты, scheduling, сроки хранения) | `api/settings.go`, `store/settings.go`, миграции 004/006/015/016/022/023 |
 | Helm | `helm/gemini/{values.yaml,templates/}`, описание values — `helm/gemini/README.md`, примеры `helm/examples/` |
 | CI/релиз | `.github/workflows/release.yml` (тег `vX.Y.Z`) |
 
@@ -49,7 +50,7 @@
 `Instance` (сервер PostgreSQL) → `Database` (бэкапится/нет, cron) → `BackupRun` (kind dump|restore, trigger,
 `event_key` для идемпотентности). Target: `DatabaseMapping` (source external_id ↔ локальная `Database`,
 `s3_prefix`, `target_owner`). `HeadPairing`/`PairingSecret` — связь source↔target. `S3Bucket`, `Settings`, `Project` (RBAC; `instances.project`).
-Миграции пронумерованы `001…022`; следующая — `023_*.sql`.
+Миграции пронумерованы `001…023`; следующая — `024_*.sql`.
 
 ### Потоки
 - **Backup (source):** CronJob/ручной запуск → `StartDump` → Job → `runDump` → S3 (`.dump`, `.sha256`, extensions)

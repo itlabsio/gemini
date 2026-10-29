@@ -74,6 +74,10 @@ export interface Settings {
   notify_on_failure: boolean;
   /** Слать уведомления об успешных dump/restore (по умолчанию нет) */
   notify_on_success: boolean;
+  /** Сколько дней хранить журнал аудита */
+  audit_retention_days: number;
+  /** Сколько дней хранить историю прогонов (активные и последний по базе — всегда) */
+  runs_retention_days: number;
   updated_at: string;
   updated_by: string;
 }

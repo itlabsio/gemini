@@ -27,6 +27,8 @@ export async function updateSettingsAction(p: {
   job_pod_start_timeout_minutes: number;
   notify_on_failure: boolean;
   notify_on_success: boolean;
+  audit_retention_days: number;
+  runs_retention_days: number;
 }): Promise<Result> {
   try {
     await updateSettings(p);

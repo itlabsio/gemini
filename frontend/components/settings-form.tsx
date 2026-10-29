@@ -32,12 +32,15 @@ const JOB_TTL_MAX = 7 * 24 * 60;
 // Таймаут старта пода в минутах — как на бэкенде (1 минута … сутки)
 const POD_START_MIN = 1;
 const POD_START_MAX = 24 * 60;
+// Сроки хранения аудита и истории прогонов в днях — как на бэкенде (2 недели … 10 лет)
+const RETENTION_MIN = 14;
+const RETENTION_MAX = 3650;
 
-/** Целое число минут в [min, max] или текст ошибки. */
-function minutesError(v: string, min: number, max: number): string | null {
+/** Целое число в [min, max] или текст ошибки (unit — «минут», «дней»). */
+function intError(v: string, min: number, max: number, unit = "минут"): string | null {
   const n = Number(v.trim());
   if (!v.trim() || !Number.isInteger(n) || n < min || n > max) {
-    return `Целое число минут от ${min} до ${max}`;
+    return `Целое число ${unit} от ${min} до ${max}`;
   }
   return null;
 }
@@ -74,15 +77,21 @@ export function SettingsForm({ initial }: { initial: Settings }) {
   );
   const [onFailure, setOnFailure] = useState(initial.notify_on_failure);
   const [onSuccess, setOnSuccess] = useState(initial.notify_on_success);
+  const [auditDays, setAuditDays] = useState(String(initial.audit_retention_days));
+  const [runsDays, setRunsDays] = useState(String(initial.runs_retention_days));
 
   const sizeErr = size.trim()
     ? bytesQuantityError(size, { min: MIN_STORAGE_SIZE })
     : "Обязательное поле";
   const reqMemErr = bytesQuantityError(reqMem);
   const limMemErr = bytesQuantityError(limMem);
-  const ttlErr = minutesError(ttl, JOB_TTL_MIN, JOB_TTL_MAX);
-  const podStartErr = minutesError(podStart, POD_START_MIN, POD_START_MAX);
-  const invalid = Boolean(sizeErr || reqMemErr || limMemErr || ttlErr || podStartErr);
+  const ttlErr = intError(ttl, JOB_TTL_MIN, JOB_TTL_MAX);
+  const podStartErr = intError(podStart, POD_START_MIN, POD_START_MAX);
+  const auditDaysErr = intError(auditDays, RETENTION_MIN, RETENTION_MAX, "дней");
+  const runsDaysErr = intError(runsDays, RETENTION_MIN, RETENTION_MAX, "дней");
+  const invalid = Boolean(
+    sizeErr || reqMemErr || limMemErr || ttlErr || podStartErr || auditDaysErr || runsDaysErr,
+  );
 
   const dirty =
     type !== initial.default_storage_type ||
@@ -95,7 +104,9 @@ export function SettingsForm({ initial }: { initial: Settings }) {
     ttl.trim() !== String(initial.job_ttl_minutes) ||
     podStart.trim() !== String(initial.job_pod_start_timeout_minutes) ||
     onFailure !== initial.notify_on_failure ||
-    onSuccess !== initial.notify_on_success;
+    onSuccess !== initial.notify_on_success ||
+    auditDays.trim() !== String(initial.audit_retention_days) ||
+    runsDays.trim() !== String(initial.runs_retention_days);
 
   function save() {
     let scheduling: Record<string, unknown> | null = null;
@@ -123,6 +134,8 @@ export function SettingsForm({ initial }: { initial: Settings }) {
         job_pod_start_timeout_minutes: Number(podStart.trim()),
         notify_on_failure: onFailure,
         notify_on_success: onSuccess,
+        audit_retention_days: Number(auditDays.trim()),
+        runs_retention_days: Number(runsDays.trim()),
       });
       if (res.ok) toast.success("Сохранено");
       else toast.error(res.error);
@@ -323,6 +336,58 @@ export function SettingsForm({ initial }: { initial: Settings }) {
             />
             <Label htmlFor="notify_on_success">Успешные прогоны</Label>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Хранение</CardTitle>
+          <CardDescription>
+            Через сколько дней удалять записи журнала аудита и завершённые
+            прогоны. Активные прогоны и последний прогон каждого вида по базе
+            не удаляются никогда — на них держится защита от повторного
+            restore. Очистка — раз в час
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex gap-4">
+          <Field
+            label="Журнал аудита, дней"
+            htmlFor="audit_retention_days"
+            error={auditDaysErr}
+            className="flex-1"
+          >
+            <Input
+              id="audit_retention_days"
+              aria-invalid={Boolean(auditDaysErr)}
+              type="number"
+              inputMode="numeric"
+              min={RETENTION_MIN}
+              max={RETENTION_MAX}
+              step={1}
+              value={auditDays}
+              onChange={(e) => setAuditDays(e.target.value)}
+              placeholder="365"
+            />
+          </Field>
+          <Field
+            label="История прогонов, дней"
+            htmlFor="runs_retention_days"
+            error={runsDaysErr}
+            className="flex-1"
+          >
+            <Input
+              id="runs_retention_days"
+              aria-invalid={Boolean(runsDaysErr)}
+              type="number"
+              inputMode="numeric"
+              min={RETENTION_MIN}
+              max={RETENTION_MAX}
+              step={1}
+              value={runsDays}
+              onChange={(e) => setRunsDays(e.target.value)}
+              placeholder="90"
+            />
+          </Field>
         </CardContent>
       </Card>
 

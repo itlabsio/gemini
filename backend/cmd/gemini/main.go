@@ -189,6 +189,7 @@ func runServe() {
 		spawn := func(f func(context.Context)) { wg.Go(func() { f(ctx) }) }
 		spawn(op.Watch)
 		spawn(op.RunTemplateReconciler) // CronJob-шаблоны + секреты кред (dump/restore)
+		spawn(op.RunRetention)          // сроки хранения аудита и истории прогонов
 		if cfg.IsTarget() {
 			spawn(op.RunPoller)
 		}

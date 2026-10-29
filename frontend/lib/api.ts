@@ -170,6 +170,8 @@ export const updateSettings = (p: {
   job_pod_start_timeout_minutes: number;
   notify_on_failure: boolean;
   notify_on_success: boolean;
+  audit_retention_days: number;
+  runs_retention_days: number;
 }) => apiFetch<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(p) });
 
 export const listS3Buckets = () => apiFetch<S3Bucket[]>("/api/s3-buckets");
