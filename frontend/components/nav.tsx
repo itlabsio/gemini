@@ -9,6 +9,7 @@ import {
   Link2,
   ScrollText,
   Settings,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -18,7 +19,18 @@ interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
-  show?: (ctx: { headRole: HeadRole; superuser: boolean }) => boolean;
+  show?: (ctx: NavCtx) => boolean;
+  /** Пункт для роли security; остальные ей не показываются. */
+  audit?: boolean;
+}
+
+interface NavCtx {
+  headRole: HeadRole;
+  superuser: boolean;
+  /** Только client-роль security (ИБ): ни superuser, ни ролей в проектах. */
+  securityOnly: boolean;
+  /** Может читать журнал аудита: superuser или security. */
+  auditReader: boolean;
 }
 
 const ITEMS: NavItem[] = [
@@ -38,14 +50,23 @@ const ITEMS: NavItem[] = [
     icon: Settings,
     show: ({ superuser }) => superuser,
   },
+  {
+    href: "/audit",
+    label: "Аудит",
+    icon: ShieldCheck,
+    show: ({ auditReader }) => auditReader,
+    audit: true,
+  },
 ];
 
-export function Nav({ headRole, superuser }: { headRole: HeadRole; superuser: boolean }) {
+export function Nav(ctx: NavCtx) {
   const pathname = usePathname();
 
   return (
     <nav className="flex w-max items-center gap-1">
-      {ITEMS.filter((i) => !i.show || i.show({ headRole, superuser })).map((item) => {
+      {ITEMS.filter(
+        (i) => (!ctx.securityOnly || i.audit) && (!i.show || i.show(ctx)),
+      ).map((item) => {
         const active =
           pathname === item.href || pathname.startsWith(`${item.href}/`);
         const Icon = item.icon;

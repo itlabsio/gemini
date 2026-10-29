@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import type {
+  AuditPage,
   BackupRun,
   Candidate,
   Database,
@@ -87,6 +88,19 @@ export const getInstance = (id: string) => apiFetch<Instance>(`/api/instances/${
 export const listDatabases = (instanceId: string) =>
   apiFetch<Database[]>(`/api/instances/${instanceId}/databases`);
 export const listRuns = (qs = "") => apiFetch<BackupRun[]>(`/api/runs${qs}`);
+/** Журнал аудита (superuser / security): qs — фильтры и курсор before. */
+export const listAudit = (qs = "") => apiFetch<AuditPage>(`/api/audit${qs}`);
+export const listAuditActors = () => apiFetch<string[]>("/api/audit/actors");
+
+/** CSV-выгрузка журнала потоком — ответ backend'а как есть (для route handler). */
+export async function fetchAuditExport(qs: string): Promise<Response> {
+  const token = await accessToken();
+  return fetch(`${API_URL}/api/audit/export${qs}`, {
+    headers: { ...(await clientHeaders()), Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+}
+
 export const listActiveRuns = () => apiFetch<BackupRun[]>("/api/runs/active");
 /** Последние perDb прогонов каждой базы инстанса, от новых к старым. */
 export const listRecentRuns = (instanceId: string, perDb: number) =>

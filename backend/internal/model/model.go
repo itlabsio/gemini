@@ -318,6 +318,21 @@ type Settings struct {
 	UpdatedBy          string    `json:"updated_by"`
 }
 
+// AuditRecord — запись журнала аудита для UI. ObjectName — имя объекта из
+// target на момент чтения (инстанс, база, бакет…); пусто, если объект удалён
+// или target не ссылается на объект — тогда UI берёт имя из Detail.
+type AuditRecord struct {
+	ID         int64           `json:"id"`
+	CreatedAt  time.Time       `json:"created_at"`
+	Actor      string          `json:"actor"`
+	Action     string          `json:"action"`
+	Target     string          `json:"target"`
+	ObjectName string          `json:"object_name"`
+	Detail     json.RawMessage `json:"detail"`
+	IP         string          `json:"ip"`
+	UserAgent  string          `json:"user_agent"`
+}
+
 // User — кэш последних логинов для аудита UI.
 type User struct {
 	Subject    string    `json:"subject"`

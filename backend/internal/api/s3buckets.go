@@ -113,11 +113,16 @@ func (s *Server) deleteS3Bucket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "built-in bucket is managed by Helm values (s3.*)")
 		return
 	}
+	b, err := s.d.Store.GetS3Bucket(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	if err := s.d.Store.DeleteS3Bucket(r.Context(), id); err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	s.audit(r, "s3_bucket.delete", id, nil)
+	s.audit(r, "s3_bucket.delete", id, map[string]any{"name": b.Name, "bucket": b.Bucket})
 	w.WriteHeader(http.StatusNoContent)
 }
 

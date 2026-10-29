@@ -9,6 +9,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Toaster } from "@/components/ui/sonner";
 import { getMe, getPublicConfig } from "@/lib/api";
+import { isSecurityOnly } from "@/lib/audit";
 import type { HeadRole } from "@/lib/types";
 import "./globals.css";
 
@@ -37,16 +38,21 @@ export default async function RootLayout({
   }
 
   let superuser = false;
+  let security = false;
+  let securityOnly = false;
   let roleLabel: string | undefined;
   if (authed && session?.accessToken) {
     try {
       const me = await getMe();
       superuser = me.superuser;
+      security = me.security;
+      securityOnly = isSecurityOnly(me);
       roleLabel = me.superuser
         ? "superuser"
-        : Object.entries(me.projects ?? {})
-            .map(([p, r]) => `${p}: ${r}`)
-            .join(", ");
+        : [
+            ...(me.security ? ["security"] : []),
+            ...Object.entries(me.projects ?? {}).map(([p, r]) => `${p}: ${r}`),
+          ].join(", ");
     } catch {
       /* backend недоступен — покажем базовый layout */
     }
@@ -64,7 +70,7 @@ export default async function RootLayout({
               <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
                 <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:px-6">
                   <Link
-                    href={authed ? "/instances" : "/"}
+                    href={authed ? (securityOnly ? "/audit" : "/instances") : "/"}
                     className="flex shrink-0 items-center gap-2 font-semibold tracking-tight"
                   >
                     <span className="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
@@ -85,7 +91,12 @@ export default async function RootLayout({
                       {/* На узкой ширине шапка прокручивается по горизонтали;
                           логотип и меню аккаунта остаются на месте. */}
                       <div className="min-w-0 flex-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                        <Nav headRole={headRole} superuser={superuser} />
+                        <Nav
+                          headRole={headRole}
+                          superuser={superuser}
+                          securityOnly={securityOnly}
+                          auditReader={superuser || security}
+                        />
                       </div>
                       <div className="shrink-0">
                         <UserMenu

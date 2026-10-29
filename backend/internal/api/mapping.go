@@ -313,6 +313,6 @@ func (s *Server) deleteMapping(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	s.audit(r, "mapping.delete", id, nil)
+	s.audit(r, "mapping.delete", id, map[string]any{"source_db_name": m.SourceDBName})
 	w.WriteHeader(http.StatusNoContent)
 }

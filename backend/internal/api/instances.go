@@ -309,14 +309,16 @@ func (s *Server) clearInstanceManagedBy(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	if _, ok := s.authorizeInstance(w, r, id, auth.RoleAdmin); !ok {
+	inst, ok := s.authorizeInstance(w, r, id, auth.RoleAdmin)
+	if !ok {
 		return
 	}
 	if err := s.d.Store.DeleteInstance(r.Context(), id); err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	s.audit(r, "instance.delete", id, nil)
+	// Имя — в detail: после удаления журнал аудита его уже не найдёт.
+	s.audit(r, "instance.delete", id, map[string]any{"name": inst.Name})
 	w.WriteHeader(http.StatusNoContent)
 }
 

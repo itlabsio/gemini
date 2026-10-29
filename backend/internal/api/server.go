@@ -100,6 +100,10 @@ func NewRouter(d Deps) http.Handler {
 	apiR.HandleFunc("/settings", auth.RequireAnyProject(auth.RoleViewer, s.getSettings)).Methods(http.MethodGet)
 	apiR.HandleFunc("/settings", auth.RequireSuperuser(s.putSettings)).Methods(http.MethodPut)
 
+	apiR.HandleFunc("/audit", auth.RequireAuditReader(s.listAudit)).Methods(http.MethodGet)
+	apiR.HandleFunc("/audit/actors", auth.RequireAuditReader(s.listAuditActors)).Methods(http.MethodGet)
+	apiR.HandleFunc("/audit/export", auth.RequireAuditReader(s.exportAudit)).Methods(http.MethodGet)
+
 	apiR.HandleFunc("/s3-buckets", auth.RequireSuperuser(s.listS3Buckets)).Methods(http.MethodGet)
 	apiR.HandleFunc("/s3-buckets", auth.RequireSuperuser(s.createS3Bucket)).Methods(http.MethodPost)
 	apiR.HandleFunc("/s3-buckets/{id}", auth.RequireSuperuser(s.updateS3Bucket)).Methods(http.MethodPut)

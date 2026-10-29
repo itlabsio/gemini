@@ -187,3 +187,26 @@ export interface Me {
   /** Публичный ключ этой головы (base64 Ed25519) — для сверки при pairing. */
   head_public_key: string;
 }
+
+/** Запись журнала аудита */
+export interface AuditRecord {
+  id: number;
+  created_at: string;
+  /** email, без него — subject из токена */
+  actor: string;
+  /** Код действия: instance.update, access.denied… */
+  action: string;
+  /** ID объекта, имя проекта или «METHOD /path» для отказов */
+  target: string;
+  /** Имя объекта по target на момент чтения; пусто — объект удалён или не объект */
+  object_name: string;
+  detail: Record<string, unknown>;
+  ip: string;
+  user_agent: string;
+}
+
+export interface AuditPage {
+  items: AuditRecord[];
+  /** Курсор следующей (более старой) страницы; 0 — дальше записей нет */
+  next_before: number;
+}

@@ -1,5 +1,7 @@
 import { auth, signIn } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { getMe } from "@/lib/api";
+import { isSecurityOnly } from "@/lib/audit";
 import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +19,15 @@ export default async function Home() {
   // обратно (объект сессии остаётся truthy даже с ошибкой refresh).
   // SessionGuard в layout до-чистит протухшую cookie через signOut.
   if (session?.accessToken && session.error !== "RefreshAccessTokenError") {
-    redirect("/instances");
+    // ИБ (только роль security) — сразу в журнал аудита: остальные страницы ей
+    // ответят 403, а каждый такой отказ попадает в тот же журнал.
+    let target = "/instances";
+    try {
+      if (isSecurityOnly(await getMe())) target = "/audit";
+    } catch {
+      /* backend недоступен — обычный маршрут */
+    }
+    redirect(target);
   }
 
   return (
@@ -36,7 +46,7 @@ export default async function Home() {
           <form
             action={async () => {
               "use server";
-              await signIn("keycloak", { redirectTo: "/instances" });
+              await signIn("keycloak", { redirectTo: "/" });
             }}
           >
             <Button type="submit" size="lg" className="w-full">

@@ -28,6 +28,7 @@
 | Шифрование секретов в БД метаданных | `secretcrypto/secretcrypto.go` (`SECRET_ENCRYPTION_KEY`) |
 | Leader election, фоновые циклы | `k8s/leader.go`, `cmd/gemini/main.go` (`runServe`, `background`, `leaseName`) |
 | Env-переменные backend'а | `config/config.go`, пример `backend/.env.local.example` |
+| Журнал аудита (запись, страница, экспорт, роль security) | запись — `api/audit.go` (`audit`, `auditDenied` для 403, `clientIP`), чтение — `store/audit.go` (`EachAudit`, имя объекта по target), UI — `frontend/app/audit`, подписи действий — `frontend/lib/audit.ts` (новое действие → добавить туда) |
 | Уведомления (провалы/успехи) | `notify/notify.go`, фильтр по настройкам — `operator.go` `notifyFailure`/`notifySuccess` |
 | Настройки (TTL, таймауты, scheduling, сроки хранения) | `api/settings.go`, `store/settings.go`, миграции 004/006/015/016/022/023 |
 | Helm | `helm/gemini/{values.yaml,templates/}`, описание values — `helm/gemini/README.md`, примеры `helm/examples/` |
@@ -62,7 +63,7 @@
 ## Frontend (`frontend/`, Next.js 16 + next-auth, bun)
 
 - **Перед правкой читать `frontend/AGENTS.md`** (Next.js здесь с breaking changes, доки — в `node_modules/next/dist/docs/`).
-- `app/<раздел>/page.tsx` — страницы (`instances`, `mapping`, `pairing`, `runs`, `settings`), `actions.ts`
+- `app/<раздел>/page.tsx` — страницы (`instances`, `mapping`, `pairing`, `runs`, `settings`, `audit`), `actions.ts`
   рядом — server actions. `app/api/auth/[...nextauth]` — вход через Keycloak.
 - `lib/api.ts` — клиент к backend, `lib/types.ts` — типы (держать в синхроне с `model.go`), `lib/auth.ts`, `proxy.ts`.
 - `components/` — прикладные компоненты (`mapping-editor`, `databases-manager`, `instance-form`, `s3-buckets-manager`…),
