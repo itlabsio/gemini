@@ -64,6 +64,8 @@ export interface Settings {
   default_pod_scheduling?: Record<string, unknown>;
   /** nodeSelector / tolerations / affinity из values чарта (job.*), только чтение */
   chart_pod_scheduling?: Record<string, unknown>;
+  /** Ресурсы из values чарта (job.resources), без них — встроенные дефолты; только чтение */
+  chart_resources: ResourceSpec;
   /** Через сколько минут после завершения k8s удаляет dump/restore-Job */
   job_ttl_minutes: number;
   /** Сколько минут ждать старта пода Job'а, потом прогон → failed */

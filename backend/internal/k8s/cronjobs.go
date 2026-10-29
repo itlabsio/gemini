@@ -154,7 +154,7 @@ func (c *Client) ReconcileCronJob(ctx context.Context, s CronSpec) error {
 				ReadOnlyRootFilesystem:   boolPtr(true),
 				Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
 			},
-			Resources: s.Overrides.containerResources(),
+			Resources: s.Overrides.ContainerResources(),
 			VolumeMounts: []corev1.VolumeMount{
 				{Name: "work", MountPath: "/work"},
 				{Name: "tmp", MountPath: "/tmp"},

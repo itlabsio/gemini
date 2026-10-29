@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	corev1 "k8s.io/api/core/v1"
+
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/k8s"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/store"
@@ -23,12 +25,14 @@ const (
 	maxPodStartTimeoutMinutes = 24 * 60
 )
 
-// settingsResponse — настройки плюс планирование из values чарта (job.*,
-// JOB_POD_OVERRIDES): UI показывает его подсказкой — что действует, пока
-// default_pod_scheduling пуст.
+// settingsResponse — настройки плюс то, что действует при пустых полях: значения
+// из values чарта (job.*, JOB_POD_OVERRIDES). UI показывает их подсказками.
 type settingsResponse struct {
 	*model.Settings
+	// ChartPodScheduling — nodeSelector/tolerations/affinity чарта; nil, если не заданы.
 	ChartPodScheduling *k8s.PodOverrides `json:"chart_pod_scheduling,omitempty"`
+	// ChartResources — ресурсы чарта, а без них — встроенные дефолты бэкенда.
+	ChartResources model.ResourceSpec `json:"chart_resources"`
 }
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
@@ -37,21 +41,29 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, settingsResponse{Settings: st, ChartPodScheduling: s.chartPodScheduling()})
+	resp := settingsResponse{Settings: st}
+	o, _ := k8s.ParsePodOverrides(s.d.Cfg.JobPodOverridesJSON) // битый JSON не даст стартовать оператору
+	resp.ChartResources = resourceSpecOf(o.ContainerResources())
+	if len(o.NodeSelector) > 0 || len(o.Tolerations) > 0 || o.Affinity != nil {
+		o.Resources = nil // у ресурсов своя карточка — chart_resources
+		resp.ChartPodScheduling = &o
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
-// chartPodScheduling — nodeSelector/tolerations/affinity из JOB_POD_OVERRIDES
-// (resources — отдельная карточка). nil, если в чарте ничего не задано.
-func (s *Server) chartPodScheduling() *k8s.PodOverrides {
-	o, err := k8s.ParsePodOverrides(s.d.Cfg.JobPodOverridesJSON)
-	if err != nil {
-		return nil
+// resourceSpecOf — requests/limits CPU и памяти в строковом виде (500m, 2Gi).
+func resourceSpecOf(rr corev1.ResourceRequirements) model.ResourceSpec {
+	q := func(l corev1.ResourceList) model.ResourceQuantities {
+		var out model.ResourceQuantities
+		if v, ok := l[corev1.ResourceCPU]; ok {
+			out.CPU = v.String()
+		}
+		if v, ok := l[corev1.ResourceMemory]; ok {
+			out.Memory = v.String()
+		}
+		return out
 	}
-	o.Resources = nil
-	if len(o.NodeSelector) == 0 && len(o.Tolerations) == 0 && o.Affinity == nil {
-		return nil
-	}
-	return &o
+	return model.ResourceSpec{Requests: q(rr.Requests), Limits: q(rr.Limits)}
 }
 
 type settingsRequest struct {

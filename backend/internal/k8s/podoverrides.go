@@ -57,8 +57,8 @@ func (o PodOverrides) applyToPod(spec *corev1.PodSpec) {
 	}
 }
 
-// containerResources возвращает ResourceRequirements: override или дефолт.
-func (o PodOverrides) containerResources() corev1.ResourceRequirements {
+// ContainerResources возвращает ResourceRequirements: override или дефолт.
+func (o PodOverrides) ContainerResources() corev1.ResourceRequirements {
 	if o.Resources != nil {
 		return *o.Resources
 	}

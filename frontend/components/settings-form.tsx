@@ -63,6 +63,7 @@ export function SettingsForm({ initial }: { initial: Settings }) {
     ? JSON.stringify(initial.default_pod_scheduling, null, 2)
     : "";
   const [sched, setSched] = useState(initialSched);
+  const chartRes = initial.chart_resources ?? {};
   // Подсказка — планирование из values чарта: оно действует, пока поле пусто.
   const schedPlaceholder = initial.chart_pod_scheduling
     ? JSON.stringify(initial.chart_pod_scheduling, null, 2)
@@ -175,8 +176,10 @@ export function SettingsForm({ initial }: { initial: Settings }) {
         <CardHeader>
           <CardTitle>Ресурсы dump/restore-подов</CardTitle>
           <CardDescription>
-            Пустые поля → встроенные дефолты бэкенда (0.5 CPU / 512Mi … 2 CPU /
-            2Gi)
+            Все поля пустые → ресурсы из values чарта (job.resources), а без
+            них — встроенные дефолты; действующие значения — в подсказках.
+            Заполненные поля заменяют ресурсы целиком: пустые останутся без
+            значения
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -189,26 +192,26 @@ export function SettingsForm({ initial }: { initial: Settings }) {
             <Input
               value={reqCpu}
               onChange={(e) => setReqCpu(e.target.value)}
-              placeholder="500m"
+              placeholder={chartRes.requests?.cpu ?? ""}
             />
             <Input
               aria-invalid={Boolean(reqMemErr)}
               value={reqMem}
               onChange={(e) => setReqMem(e.target.value)}
-              placeholder="512Mi"
+              placeholder={chartRes.requests?.memory ?? ""}
             />
 
             <span className="text-sm font-medium">limits</span>
             <Input
               value={limCpu}
               onChange={(e) => setLimCpu(e.target.value)}
-              placeholder="2"
+              placeholder={chartRes.limits?.cpu ?? ""}
             />
             <Input
               aria-invalid={Boolean(limMemErr)}
               value={limMem}
               onChange={(e) => setLimMem(e.target.value)}
-              placeholder="2Gi"
+              placeholder={chartRes.limits?.memory ?? ""}
             />
           </div>
           {(reqMemErr || limMemErr) && (
