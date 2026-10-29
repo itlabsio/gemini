@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -119,14 +120,22 @@ func runDump(ctx context.Context, e Env) error {
 		log.Printf("dump: extensions: %s", strings.Join(exts, ", "))
 	}
 
-	// Fan-out: копия во все бакеты. Отказ части бакетов не роняет Job — дамп
-	// всё равно доступен Target'ам из остальных; бакеты без копии голова Source
-	// обнаружит при подписи и пришлёт нотификацию. Падаем, только если не удалось
-	// никуда.
+	// Fan-out: копия во все бакеты, параллельно — время заливки равно самому
+	// медленному бакету, а не сумме. Память не растёт: из файла (io.ReaderAt)
+	// minio-go читает части через SectionReader, без буферов на part. Отказ части
+	// бакетов не роняет Job — дамп всё равно доступен Target'ам из остальных;
+	// бакеты без копии инстанс Source обнаружит при подписи и пришлёт
+	// нотификацию. Падаем, только если не удалось никуда.
+	errs := make([]error, len(e.S3Buckets))
+	var wg sync.WaitGroup
+	for i, b := range e.S3Buckets {
+		wg.Go(func() { errs[i] = uploadDump(ctx, b, e.S3ObjectKey, dumpPath, sum, exts) })
+	}
+	wg.Wait()
 	var failed []string
-	for _, b := range e.S3Buckets {
-		if err := uploadDump(ctx, b, e.S3ObjectKey, dumpPath, sum, exts); err != nil {
-			log.Printf("dump: bucket %s: %v", b, err)
+	for i, b := range e.S3Buckets {
+		if errs[i] != nil {
+			log.Printf("dump: bucket %s: %v", b, errs[i])
 			failed = append(failed, b.String())
 		}
 	}
