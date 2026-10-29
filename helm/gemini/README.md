@@ -61,9 +61,9 @@
 | vault.role | string | `"gemini"` | Vault-роль, на которую логинится SA backend'а |
 | vault.existingSecret | string | `""` | нужен только при authMethod=token; k8s Secret с ключом VAULT_TOKEN |
 | vault.saAnnotations | object | `{}` | аннотации для job-ServiceAccount (например, для Vault Agent Injector) |
-| notify.enabled | bool | `false` | Включить отправку уведомлений о результатах dump/restore |
+| notify.enabled | bool | `false` | Включить отправку уведомлений о dump/restore (о каких исходах — в UI «Настройки», по умолчанию только провалы) |
 | notify.provider | string | `"slack"` | slack | telegram |
-| notify.existingSecret | string | `"gemini-notify"` | k8s Secret с ключом NOTIFY_WEBHOOK_URL (+ NOTIFY_TELEGRAM_CHAT_ID для telegram) |
+| notify.existingSecret | string | `"gemini-notify"` | k8s Secret с ключом NOTIFY_WEBHOOK_URL (+ NOTIFY_TELEGRAM_CHAT_ID и опц. NOTIFY_TELEGRAM_THREAD_ID для telegram) |
 | poller.interval | string | `"5m"` | Период fallback-поллинга S3 (только target-инстанс) |
 | peerRetry.initialDelay | string | `"1s"` | Начальная задержка ретрая запросов между инстансами Gemini |
 | peerRetry.maxDelay | string | `"60s"` | Максимальная задержка ретрая (экспоненциальный backoff) |

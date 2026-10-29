@@ -17,10 +17,11 @@ func (s *Store) GetSettings(ctx context.Context) (*model.Settings, error) {
 	err := s.pool.QueryRow(ctx, `
 		SELECT default_storage_type, default_storage_size, default_resources,
 		       default_pod_scheduling, job_ttl_minutes, job_pod_start_timeout_minutes,
-		       updated_at, updated_by
+		       notify_on_failure, notify_on_success, updated_at, updated_by
 		FROM app_settings WHERE id = TRUE`,
 	).Scan(&st.DefaultStorageType, &st.DefaultStorageSize, &resJSON, &schedJSON,
-		&st.JobTTLMinutes, &st.JobPodStartTimeoutMinutes, &st.UpdatedAt, &st.UpdatedBy)
+		&st.JobTTLMinutes, &st.JobPodStartTimeoutMinutes, &st.NotifyOnFailure, &st.NotifyOnSuccess,
+		&st.UpdatedAt, &st.UpdatedBy)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -41,6 +42,8 @@ type SettingsInput struct {
 	DefaultPodScheduling      json.RawMessage // JSON nodeSelector/tolerations/affinity; nil → '{}'
 	JobTTLMinutes             int32
 	JobPodStartTimeoutMinutes int32
+	NotifyOnFailure           bool
+	NotifyOnSuccess           bool
 }
 
 // UpdateSettings перезаписывает singleton-строку.
@@ -57,10 +60,11 @@ func (s *Store) UpdateSettings(ctx context.Context, in SettingsInput, updatedBy 
 		UPDATE app_settings
 		SET default_storage_type = $1, default_storage_size = $2, default_resources = $3,
 		    default_pod_scheduling = $4, job_ttl_minutes = $5,
-		    job_pod_start_timeout_minutes = $6, updated_at = NOW(), updated_by = $7
+		    job_pod_start_timeout_minutes = $6, notify_on_failure = $7, notify_on_success = $8,
+		    updated_at = NOW(), updated_by = $9
 		WHERE id = TRUE`,
 		in.DefaultStorageType, in.DefaultStorageSize, string(resJSON), schedJSON,
-		in.JobTTLMinutes, in.JobPodStartTimeoutMinutes, updatedBy)
+		in.JobTTLMinutes, in.JobPodStartTimeoutMinutes, in.NotifyOnFailure, in.NotifyOnSuccess, updatedBy)
 	if err != nil {
 		return nil, err
 	}

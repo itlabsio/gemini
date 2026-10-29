@@ -163,6 +163,8 @@ export const updateSettings = (p: {
   default_pod_scheduling?: Record<string, unknown> | null;
   job_ttl_minutes: number;
   job_pod_start_timeout_minutes: number;
+  notify_on_failure: boolean;
+  notify_on_success: boolean;
 }) => apiFetch<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(p) });
 
 export const listS3Buckets = () => apiFetch<S3Bucket[]>("/api/s3-buckets");

@@ -109,6 +109,8 @@ type NotifyConfig struct {
 	WebhookURL string
 	// TelegramChatID нужен только для provider=telegram.
 	TelegramChatID string
+	// TelegramThreadID — топик форум-группы (message_thread_id), опционально.
+	TelegramThreadID string
 }
 
 // PeerRetryConfig — backoff ретраев межголовых webhook'ов (в обе стороны).
@@ -151,10 +153,11 @@ func Load() (*Config, error) {
 			K8sTokenPath: env("VAULT_K8S_TOKEN_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/token"),
 		},
 		Notify: NotifyConfig{
-			Enabled:        envBool("NOTIFY_ENABLED", false),
-			Provider:       env("NOTIFY_PROVIDER", "slack"),
-			WebhookURL:     os.Getenv("NOTIFY_WEBHOOK_URL"),
-			TelegramChatID: os.Getenv("NOTIFY_TELEGRAM_CHAT_ID"),
+			Enabled:          envBool("NOTIFY_ENABLED", false),
+			Provider:         env("NOTIFY_PROVIDER", "slack"),
+			WebhookURL:       os.Getenv("NOTIFY_WEBHOOK_URL"),
+			TelegramChatID:   os.Getenv("NOTIFY_TELEGRAM_CHAT_ID"),
+			TelegramThreadID: os.Getenv("NOTIFY_TELEGRAM_THREAD_ID"),
 		},
 		PollInterval: envDuration("POLL_INTERVAL", 5*time.Minute),
 		PeerRetry: PeerRetryConfig{

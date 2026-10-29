@@ -27,8 +27,8 @@
 | Шифрование секретов в БД метаданных | `secretcrypto/secretcrypto.go` (`SECRET_ENCRYPTION_KEY`) |
 | Leader election, фоновые циклы | `k8s/leader.go`, `cmd/gemini/main.go` (`runServe`, `background`, `leaseName`) |
 | Env-переменные backend'а | `config/config.go`, пример `backend/.env.local.example` |
-| Уведомления об ошибках | `notify/notify.go` |
-| Настройки (TTL, таймауты, scheduling) | `api/settings.go`, `store/settings.go`, миграции 004/006/015/016 |
+| Уведомления (провалы/успехи) | `notify/notify.go`, фильтр по настройкам — `operator.go` `notifyFailure`/`notifySuccess` |
+| Настройки (TTL, таймауты, scheduling) | `api/settings.go`, `store/settings.go`, миграции 004/006/015/016/022 |
 | Helm | `helm/gemini/{values.yaml,templates/}`, описание values — `helm/gemini/README.md`, примеры `helm/examples/` |
 | CI/релиз | `.github/workflows/release.yml` (тег `vX.Y.Z`) |
 
@@ -49,7 +49,7 @@
 `Instance` (сервер PostgreSQL) → `Database` (бэкапится/нет, cron) → `BackupRun` (kind dump|restore, trigger,
 `event_key` для идемпотентности). Target: `DatabaseMapping` (source external_id ↔ локальная `Database`,
 `s3_prefix`, `target_owner`). `HeadPairing`/`PairingSecret` — связь source↔target. `S3Bucket`, `Settings`, `Project` (RBAC; `instances.project`).
-Миграции пронумерованы `001…021`; следующая — `022_*.sql`.
+Миграции пронумерованы `001…022`; следующая — `023_*.sql`.
 
 ### Потоки
 - **Backup (source):** CronJob/ручной запуск → `StartDump` → Job → `runDump` → S3 (`.dump`, `.sha256`, extensions)

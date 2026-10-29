@@ -40,6 +40,9 @@ type settingsRequest struct {
 	// 0 / не передан → текущее значение не меняется (старые клиенты).
 	JobTTLMinutes             int32 `json:"job_ttl_minutes"`
 	JobPodStartTimeoutMinutes int32 `json:"job_pod_start_timeout_minutes"`
+	// nil / не передан → текущее значение не меняется (старые клиенты).
+	NotifyOnFailure *bool `json:"notify_on_failure"`
+	NotifyOnSuccess *bool `json:"notify_on_success"`
 }
 
 // putSettings — админка: дефолты типа/размера временного хранилища, ресурсов и TTL Job'ов.
@@ -86,18 +89,23 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		sched = nil
 	}
 	ttl, podStart := req.JobTTLMinutes, req.JobPodStartTimeoutMinutes
-	if ttl == 0 || podStart == 0 {
-		cur, err := s.d.Store.GetSettings(r.Context())
-		if err != nil {
-			writeStoreError(w, err)
-			return
-		}
-		if ttl == 0 {
-			ttl = cur.JobTTLMinutes
-		}
-		if podStart == 0 {
-			podStart = cur.JobPodStartTimeoutMinutes
-		}
+	cur, err := s.d.Store.GetSettings(r.Context())
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if ttl == 0 {
+		ttl = cur.JobTTLMinutes
+	}
+	if podStart == 0 {
+		podStart = cur.JobPodStartTimeoutMinutes
+	}
+	onFailure, onSuccess := cur.NotifyOnFailure, cur.NotifyOnSuccess
+	if req.NotifyOnFailure != nil {
+		onFailure = *req.NotifyOnFailure
+	}
+	if req.NotifyOnSuccess != nil {
+		onSuccess = *req.NotifyOnSuccess
 	}
 	if ttl < minJobTTLMinutes || ttl > maxJobTTLMinutes {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf(
@@ -117,6 +125,8 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		DefaultPodScheduling:      sched,
 		JobTTLMinutes:             ttl,
 		JobPodStartTimeoutMinutes: podStart,
+		NotifyOnFailure:           onFailure,
+		NotifyOnSuccess:           onSuccess,
 	}, id)
 	if err != nil {
 		writeStoreError(w, err)

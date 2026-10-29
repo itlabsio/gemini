@@ -18,7 +18,7 @@ export default async function SettingsPage() {
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
       <PageHeader
         title="Настройки"
-        description="Дефолты для новых запусков: тип и размер временного диска дампа, ресурсы и планирование подов; S3-бакеты дампов"
+        description="Дефолты для новых запусков: тип и размер временного диска дампа, ресурсы и планирование подов; уведомления; S3-бакеты дампов"
       />
       <p className="-mt-2 text-xs text-muted-foreground">
         Обновлено: <LocalDateTime value={settings.updated_at} />

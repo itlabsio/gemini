@@ -66,6 +66,10 @@ export interface Settings {
   job_ttl_minutes: number;
   /** Сколько минут ждать старта пода Job'а, потом прогон → failed */
   job_pod_start_timeout_minutes: number;
+  /** Слать уведомления о провалах dump/restore (по умолчанию да) */
+  notify_on_failure: boolean;
+  /** Слать уведомления об успешных dump/restore (по умолчанию нет) */
+  notify_on_success: boolean;
   updated_at: string;
   updated_by: string;
 }

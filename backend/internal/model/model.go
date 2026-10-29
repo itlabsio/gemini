@@ -305,9 +305,13 @@ type Settings struct {
 	JobTTLMinutes int32 `json:"job_ttl_minutes"`
 	// JobPodStartTimeoutMinutes — сколько ждать старта пода Job'а; дальше прогон
 	// закрывается как failed, Job удаляется.
-	JobPodStartTimeoutMinutes int32     `json:"job_pod_start_timeout_minutes"`
-	UpdatedAt                 time.Time `json:"updated_at"`
-	UpdatedBy                 string    `json:"updated_by"`
+	JobPodStartTimeoutMinutes int32 `json:"job_pod_start_timeout_minutes"`
+	// NotifyOnFailure / NotifyOnSuccess — на какие исходы dump/restore слать
+	// уведомления (канал — notify.* в чарте). По умолчанию только провалы.
+	NotifyOnFailure bool      `json:"notify_on_failure"`
+	NotifyOnSuccess bool      `json:"notify_on_success"`
+	UpdatedAt       time.Time `json:"updated_at"`
+	UpdatedBy       string    `json:"updated_by"`
 }
 
 // User — кэш последних логинов для аудита UI.

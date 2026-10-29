@@ -146,11 +146,11 @@ vault:
   saAnnotations: {}
 
 notify:
-  # -- Включить отправку уведомлений о результатах dump/restore
+  # -- Включить отправку уведомлений о dump/restore (о каких исходах — в UI «Настройки», по умолчанию только провалы)
   enabled: false
   # -- slack | telegram
   provider: slack
-  # -- k8s Secret с ключом NOTIFY_WEBHOOK_URL (+ NOTIFY_TELEGRAM_CHAT_ID для telegram)
+  # -- k8s Secret с ключом NOTIFY_WEBHOOK_URL (+ NOTIFY_TELEGRAM_CHAT_ID и опц. NOTIFY_TELEGRAM_THREAD_ID для telegram)
   existingSecret: gemini-notify
 
 poller:

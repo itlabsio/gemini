@@ -401,12 +401,32 @@ func (o *Operator) failRun(ctx context.Context, runID, dbName string, kind model
 	_, _ = o.store.UpdateRun(ctx, runID, store.RunUpdate{
 		Status: model.StatusFailed, ErrorMessage: &msg, MarkFinished: true,
 	})
-	if o.notifier != nil {
-		_ = o.notifier.Failure(ctx, notify.Event{
-			HeadRole: string(o.cfg.Role), Kind: string(kind), Database: dbName,
-			RunID: runID, Error: msg, OccurredAt: time.Now(),
-		})
+	o.notifyFailure(ctx, notify.Event{
+		HeadRole: string(o.cfg.Role), Kind: string(kind), Database: dbName,
+		RunID: runID, Error: msg, OccurredAt: time.Now(),
+	})
+}
+
+// notifyFailure / notifySuccess шлют уведомление, если такой исход включён в
+// настройках. Настройки не прочитались — шлём только провалы (дефолт).
+func (o *Operator) notifyFailure(ctx context.Context, e notify.Event) {
+	if o.notifier == nil {
+		return
 	}
+	if st, err := o.store.GetSettings(ctx); err == nil && !st.NotifyOnFailure {
+		return
+	}
+	_ = o.notifier.Failure(ctx, e)
+}
+
+func (o *Operator) notifySuccess(ctx context.Context, e notify.Event) {
+	if o.notifier == nil {
+		return
+	}
+	if st, err := o.store.GetSettings(ctx); err != nil || !st.NotifyOnSuccess {
+		return
+	}
+	_ = o.notifier.Success(ctx, e)
 }
 
 // Watch раз в 10 секунд сверяет активные прогоны с состоянием Job'ов в кластере.
@@ -692,6 +712,10 @@ func (o *Operator) onRunSucceeded(ctx context.Context, run model.BackupRun) {
 			o.notifyPeerRestoreStatus(ctx, updated, model.StatusSucceeded, "")
 		}
 	}
+	o.notifySuccess(ctx, notify.Event{
+		HeadRole: string(o.cfg.Role), Kind: string(run.Kind), Database: db.DBName,
+		RunID: run.ID, OccurredAt: time.Now(),
+	})
 }
 
 func (o *Operator) onRunFailed(ctx context.Context, run model.BackupRun, msg string) {
@@ -713,12 +737,10 @@ func (o *Operator) onRunFailed(ctx context.Context, run model.BackupRun, msg str
 	if db != nil {
 		dbName = db.DBName
 	}
-	if o.notifier != nil {
-		_ = o.notifier.Failure(ctx, notify.Event{
-			HeadRole: string(o.cfg.Role), Kind: string(run.Kind), Database: dbName,
-			RunID: run.ID, Error: msg, OccurredAt: time.Now(),
-		})
-	}
+	o.notifyFailure(ctx, notify.Event{
+		HeadRole: string(o.cfg.Role), Kind: string(run.Kind), Database: dbName,
+		RunID: run.ID, Error: msg, OccurredAt: time.Now(),
+	})
 	if run.Kind == model.KindRestore && o.cfg.IsTarget() {
 		o.notifyPeerRestoreStatus(ctx, updated, model.StatusFailed, msg)
 	}
@@ -758,8 +780,8 @@ func (o *Operator) signDump(ctx context.Context, db *model.Database, run *model.
 		}
 		log.Printf("operator: signed dump %s", c.Object(run.S3ObjectKey))
 	}
-	if len(missing) > 0 && o.notifier != nil {
-		_ = o.notifier.Failure(ctx, notify.Event{
+	if len(missing) > 0 {
+		o.notifyFailure(ctx, notify.Event{
 			HeadRole: string(o.cfg.Role), Kind: string(model.KindDump), Database: db.DBName, RunID: run.ID,
 			Error:      "дамп не залит в бакет(ы): " + strings.Join(missing, ", ") + " — см. лог dump-Job'а",
 			OccurredAt: time.Now(),

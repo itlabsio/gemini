@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Field } from "@/components/ui/field";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Card,
   CardContent,
@@ -65,6 +67,8 @@ export function SettingsForm({ initial }: { initial: Settings }) {
   const [podStart, setPodStart] = useState(
     String(initial.job_pod_start_timeout_minutes),
   );
+  const [onFailure, setOnFailure] = useState(initial.notify_on_failure);
+  const [onSuccess, setOnSuccess] = useState(initial.notify_on_success);
 
   const sizeErr = size.trim()
     ? bytesQuantityError(size, { min: MIN_STORAGE_SIZE })
@@ -84,7 +88,9 @@ export function SettingsForm({ initial }: { initial: Settings }) {
     limMem !== (initial.default_resources?.limits?.memory ?? "") ||
     sched.trim() !== initialSched.trim() ||
     ttl.trim() !== String(initial.job_ttl_minutes) ||
-    podStart.trim() !== String(initial.job_pod_start_timeout_minutes);
+    podStart.trim() !== String(initial.job_pod_start_timeout_minutes) ||
+    onFailure !== initial.notify_on_failure ||
+    onSuccess !== initial.notify_on_success;
 
   function save() {
     let scheduling: Record<string, unknown> | null = null;
@@ -110,6 +116,8 @@ export function SettingsForm({ initial }: { initial: Settings }) {
         default_pod_scheduling: scheduling,
         job_ttl_minutes: Number(ttl.trim()),
         job_pod_start_timeout_minutes: Number(podStart.trim()),
+        notify_on_failure: onFailure,
+        notify_on_success: onSuccess,
       });
       if (res.ok) toast.success("Сохранено");
       else toast.error(res.error);
@@ -277,6 +285,35 @@ export function SettingsForm({ initial }: { initial: Settings }) {
               placeholder="5"
             />
           </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Уведомления</CardTitle>
+          <CardDescription>
+            О каких исходах dump/restore сообщать. Канал (Slack / Telegram)
+            задаётся в чарте (notify.*); если он не включён, уведомления не
+            отправляются
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="notify_on_failure"
+              checked={onFailure}
+              onCheckedChange={setOnFailure}
+            />
+            <Label htmlFor="notify_on_failure">Провалы</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="notify_on_success"
+              checked={onSuccess}
+              onCheckedChange={setOnSuccess}
+            />
+            <Label htmlFor="notify_on_success">Успешные прогоны</Label>
+          </div>
         </CardContent>
       </Card>
 

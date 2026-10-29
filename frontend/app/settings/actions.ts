@@ -25,6 +25,8 @@ export async function updateSettingsAction(p: {
   default_pod_scheduling?: Record<string, unknown> | null;
   job_ttl_minutes: number;
   job_pod_start_timeout_minutes: number;
+  notify_on_failure: boolean;
+  notify_on_success: boolean;
 }): Promise<Result> {
   try {
     await updateSettings(p);
