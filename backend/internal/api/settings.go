@@ -23,13 +23,35 @@ const (
 	maxPodStartTimeoutMinutes = 24 * 60
 )
 
+// settingsResponse — настройки плюс планирование из values чарта (job.*,
+// JOB_POD_OVERRIDES): UI показывает его подсказкой — что действует, пока
+// default_pod_scheduling пуст.
+type settingsResponse struct {
+	*model.Settings
+	ChartPodScheduling *k8s.PodOverrides `json:"chart_pod_scheduling,omitempty"`
+}
+
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	st, err := s.d.Store.GetSettings(r.Context())
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, st)
+	writeJSON(w, http.StatusOK, settingsResponse{Settings: st, ChartPodScheduling: s.chartPodScheduling()})
+}
+
+// chartPodScheduling — nodeSelector/tolerations/affinity из JOB_POD_OVERRIDES
+// (resources — отдельная карточка). nil, если в чарте ничего не задано.
+func (s *Server) chartPodScheduling() *k8s.PodOverrides {
+	o, err := k8s.ParsePodOverrides(s.d.Cfg.JobPodOverridesJSON)
+	if err != nil {
+		return nil
+	}
+	o.Resources = nil
+	if len(o.NodeSelector) == 0 && len(o.Tolerations) == 0 && o.Affinity == nil {
+		return nil
+	}
+	return &o
 }
 
 type settingsRequest struct {

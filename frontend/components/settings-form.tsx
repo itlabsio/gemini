@@ -63,6 +63,10 @@ export function SettingsForm({ initial }: { initial: Settings }) {
     ? JSON.stringify(initial.default_pod_scheduling, null, 2)
     : "";
   const [sched, setSched] = useState(initialSched);
+  // Подсказка — планирование из values чарта: оно действует, пока поле пусто.
+  const schedPlaceholder = initial.chart_pod_scheduling
+    ? JSON.stringify(initial.chart_pod_scheduling, null, 2)
+    : '{\n  "nodeSelector": { "node-group": "backup" }\n}';
   const [ttl, setTtl] = useState(String(initial.job_ttl_minutes));
   const [podStart, setPodStart] = useState(
     String(initial.job_pod_start_timeout_minutes),
@@ -220,16 +224,19 @@ export function SettingsForm({ initial }: { initial: Settings }) {
           <CardTitle>Планирование dump/restore-подов</CardTitle>
           <CardDescription>
             JSON с полями nodeSelector / tolerations / affinity (как в PodSpec).
-            Перекрывает значения из values чарта (job.*). Пусто → значения чарта
+            Перекрывает значения из values чарта (job.*).{" "}
+            {initial.chart_pod_scheduling
+              ? "Пусто → значения чарта (в подсказке)"
+              : "Пусто → значения чарта (в чарте не заданы)"}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Textarea
             value={sched}
             onChange={(e) => setSched(e.target.value)}
-            rows={8}
+            rows={Math.min(Math.max(8, schedPlaceholder.split("\n").length), 24)}
             spellCheck={false}
-            placeholder={'{\n  "nodeSelector": { "node-group": "backup" }\n}'}
+            placeholder={schedPlaceholder}
             className="font-mono text-xs"
           />
         </CardContent>

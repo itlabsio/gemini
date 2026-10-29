@@ -62,6 +62,8 @@ export interface Settings {
   default_storage_size: string;
   default_resources: ResourceSpec;
   default_pod_scheduling?: Record<string, unknown>;
+  /** nodeSelector / tolerations / affinity из values чарта (job.*), только чтение */
+  chart_pod_scheduling?: Record<string, unknown>;
   /** Через сколько минут после завершения k8s удаляет dump/restore-Job */
   job_ttl_minutes: number;
   /** Сколько минут ждать старта пода Job'а, потом прогон → failed */
