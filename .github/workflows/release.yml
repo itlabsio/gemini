@@ -93,3 +93,39 @@ jobs:
           echo "$GH_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           helm package helm/gemini --version "$version" --app-version "$version" -d dist
           helm push "dist/gemini-$version.tgz" "oci://ghcr.io/${GITHUB_REPOSITORY,,}/charts"
+
+  release:
+    # GitHub Release — после публикации образов и чарта. --generate-notes видит
+    # только смерженные PR, а коммиты идут прямо в main, поэтому сверху кладём
+    # список коммитов от предыдущего тега, сгруппированный по conventional-типу.
+    needs: chart
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          prev=$(git describe --tags --abbrev=0 --match 'v*' "$tag^" 2>/dev/null || true)
+          range="${prev:+$prev..}$tag"
+          # section <заголовок> <флаги grep> <шаблон>: пустые секции не выводятся.
+          section() {
+            local lines
+            lines=$(git log --no-merges --format='- %s (%h)' "$range" | grep "$2" "$3" || true)
+            if [ -n "$lines" ]; then printf '### %s\n%s\n\n' "$1" "$lines"; fi
+          }
+          {
+            section Features -E '^- feat(\(.*\))?!?:'
+            section Fixes -E '^- fix(\(.*\))?!?:'
+            section Other -vE '^- (feat|fix)(\(.*\))?!?:'
+          } > notes.md
+          flags=()
+          [[ "$tag" == *-* ]] && flags+=(--prerelease)
+          gh release create "$tag" --verify-tag --generate-notes --notes-file notes.md "${flags[@]}"
