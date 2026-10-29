@@ -176,10 +176,9 @@ export function SettingsForm({ initial }: { initial: Settings }) {
         <CardHeader>
           <CardTitle>Ресурсы dump/restore-подов</CardTitle>
           <CardDescription>
-            Все поля пустые → ресурсы из values чарта (job.resources), а без
-            них — встроенные дефолты; действующие значения — в подсказках.
-            Заполненные поля заменяют ресурсы целиком: пустые останутся без
-            значения
+            Заполненные поля перекрывают ресурсы из values чарта
+            (job.resources), а без них — встроенные дефолты; пустое поле берёт
+            значение оттуда, оно — в подсказке
           </CardDescription>
         </CardHeader>
         <CardContent>

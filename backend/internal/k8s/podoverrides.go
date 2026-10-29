@@ -65,23 +65,48 @@ func (o PodOverrides) ContainerResources() corev1.ResourceRequirements {
 	return defaultJobResources()
 }
 
-// WithResources возвращает копию overrides с requests/limits из строковых значений
-// (пустые пропускаются). Если все четыре пусты — Resources не трогается.
+// WithResources возвращает копию overrides, где requests/limits из строковых
+// значений накладываются поверх действующих ресурсов (чарта или встроенных
+// дефолтов) поштучно: пустое значение оставляет то, что было.
 func (o PodOverrides) WithResources(reqCPU, reqMem, limCPU, limMem string) PodOverrides {
 	req := quantityList(reqCPU, reqMem)
 	lim := quantityList(limCPU, limMem)
 	if req == nil && lim == nil {
 		return o
 	}
-	rr := &corev1.ResourceRequirements{}
-	if req != nil {
-		rr.Requests = req
+	base := o.ContainerResources()
+	o.Resources = &corev1.ResourceRequirements{
+		Requests: mergeResourceList(base.Requests, req),
+		Limits:   mergeResourceList(base.Limits, lim),
 	}
-	if lim != nil {
-		rr.Limits = lim
-	}
-	o.Resources = rr
 	return o
+}
+
+// mergeResourceList — копия base с перекрытыми значениями из over (base не меняется).
+func mergeResourceList(base, over corev1.ResourceList) corev1.ResourceList {
+	if len(base) == 0 && len(over) == 0 {
+		return nil
+	}
+	out := make(corev1.ResourceList, len(base)+len(over))
+	for k, v := range base {
+		out[k] = v.DeepCopy()
+	}
+	for k, v := range over {
+		out[k] = v
+	}
+	return out
+}
+
+// ValidateResources проверяет, что requests не превышают limits — иначе k8s
+// отклонит под Job'а.
+func (o PodOverrides) ValidateResources() error {
+	rr := o.ContainerResources()
+	for name, req := range rr.Requests {
+		if lim, ok := rr.Limits[name]; ok && req.Cmp(lim) > 0 {
+			return fmt.Errorf("requests.%s (%s) exceeds limits.%s (%s)", name, req.String(), name, lim.String())
+		}
+	}
+	return nil
 }
 
 func quantityList(cpu, mem string) corev1.ResourceList {

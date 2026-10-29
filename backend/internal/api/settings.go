@@ -113,6 +113,14 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Поля накладываются на ресурсы чарта поштучно — проверяем итог, а не только ввод.
+	base, _ := k8s.ParsePodOverrides(s.d.Cfg.JobPodOverridesJSON)
+	dr := req.DefaultResources
+	if err := base.WithResources(dr.Requests.CPU, dr.Requests.Memory, dr.Limits.CPU, dr.Limits.Memory).
+		ValidateResources(); err != nil {
+		writeError(w, http.StatusBadRequest, "default_resources: "+err.Error())
+		return
+	}
 	sched := req.DefaultPodScheduling
 	if len(sched) > 0 && string(sched) != "null" {
 		if _, err := k8s.ParsePodOverrides(string(sched)); err != nil {
