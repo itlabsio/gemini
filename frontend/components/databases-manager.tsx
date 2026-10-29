@@ -20,11 +20,13 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/status-badge";
 import { RunningStopButton } from "@/components/running-stop-button";
+import { RunHistoryStrip } from "@/components/run-history-strip";
 import {
   bytesQuantityError,
   cn,
   fmtPgVersion,
   MIN_STORAGE_SIZE,
+  RUN_HISTORY_SLOTS,
 } from "@/lib/utils";
 import {
   Select,
@@ -52,6 +54,8 @@ interface Props {
   instanceId: string;
   databases: Database[];
   initialActiveRuns: BackupRun[];
+  /** Последние прогоны баз инстанса, от новых к старым. */
+  recentRuns: BackupRun[];
   defaultStorageSize: string;
   /** Тип тома из настроек ("" — не загрузились). */
   defaultStorageType: string;
@@ -79,10 +83,23 @@ function indexByDb(runs: BackupRun[]): Map<string, BackupRun> {
   return m;
 }
 
+function groupByDb(runs: BackupRun[]): Map<string, BackupRun[]> {
+  const m = new Map<string, BackupRun[]>();
+  for (const r of runs) {
+    const list = m.get(r.database_id);
+    if (list) list.push(r);
+    else m.set(r.database_id, [r]);
+  }
+  return m;
+}
+
+const NO_RUNS: BackupRun[] = [];
+
 export function DatabasesManager({
   instanceId,
   databases,
   initialActiveRuns,
+  recentRuns,
   defaultStorageSize,
   defaultStorageType,
   headRole,
@@ -122,6 +139,7 @@ export function DatabasesManager({
   }
 
   const activeByDb = polled ?? indexByDb(initialActiveRuns);
+  const recentByDb = groupByDb(recentRuns);
 
   // Зеркало текущего состояния для сравнения в опросе — ref в эффекте, без setState.
   const activeRef = useRef(activeByDb);
@@ -190,6 +208,8 @@ export function DatabasesManager({
       activeRef.current = next;
       setPolled(next);
       void refreshActive();
+      // Опрос остановку завершением не считает — историю обновляем сами.
+      router.refresh();
     });
 
   const onDiscover = () =>
@@ -247,7 +267,7 @@ export function DatabasesManager({
                 {headRole === "source" && <TableHead>Расписание (cron)</TableHead>}
                 {perDB && <TableHead>Пользователь restore</TableHead>}
                 <TableHead>Хранилище дампа</TableHead>
-                <TableHead className="text-center">Журнал</TableHead>
+                <TableHead>Последние запуски</TableHead>
                 <TableHead className="text-right">Статус / запуск</TableHead>
               </TableRow>
             </TableHeader>
@@ -264,6 +284,7 @@ export function DatabasesManager({
                   canRun={canRun}
                   disabled={pending}
                   activeRun={activeByDb.get(db.id)}
+                  recentRuns={recentByDb.get(db.id) ?? NO_RUNS}
                   defaultStorageSize={defaultStorageSize}
                   defaultStorageType={defaultStorageType}
                   run={run}
@@ -288,6 +309,7 @@ function Row({
   canRun,
   disabled,
   activeRun,
+  recentRuns,
   defaultStorageSize,
   defaultStorageType,
   run,
@@ -302,6 +324,7 @@ function Row({
   canRun: boolean;
   disabled: boolean;
   activeRun?: BackupRun;
+  recentRuns: BackupRun[];
   defaultStorageSize: string;
   /** Тип тома из настроек ("" — не загрузились). */
   defaultStorageType: string;
@@ -317,6 +340,11 @@ function Row({
     stType !== (db.storage_type ?? "") || stSize !== (db.storage_size ?? "");
 
   const running = Boolean(activeRun);
+  // Активный прогон из опроса свежее серверной истории: подставляем его, чтобы
+  // только что запущенный сразу появился в полоске.
+  const history = activeRun
+    ? [activeRun, ...recentRuns.filter((r) => r.id !== activeRun.id)]
+    : recentRuns;
   // Без своего пользователя restore в in_place_per_db не запустится — бэкенд
   // откажет, поэтому и кнопку не показываем.
   const missingRestoreUser = perDB && !db.restore_username;
@@ -459,19 +487,26 @@ function Row({
         </div>
       </TableCell>
 
-      <TableCell className="text-center">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Link
-              href={`/runs?database_id=${db.id}`}
-              aria-label="Журнал запусков"
-              className="inline-flex rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            >
-              <ScrollText className="size-4" />
-            </Link>
-          </TooltipTrigger>
-          <TooltipContent>Журнал запусков</TooltipContent>
-        </Tooltip>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <RunHistoryStrip
+            runs={history}
+            slots={RUN_HISTORY_SLOTS}
+            journalHref={`/runs?database_id=${db.id}`}
+          />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                href={`/runs?database_id=${db.id}`}
+                aria-label="Журнал запусков"
+                className="inline-flex rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                <ScrollText className="size-4" />
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent>Журнал запусков</TooltipContent>
+          </Tooltip>
+        </div>
       </TableCell>
 
       <TableCell className="text-right">

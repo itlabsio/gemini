@@ -10,6 +10,7 @@ import {
   getSettings,
   listActiveRuns,
   listDatabases,
+  listRecentRuns,
 } from "@/lib/api";
 import { DatabasesManager } from "@/components/databases-manager";
 import { InstanceActions } from "@/components/instance-actions";
@@ -17,7 +18,7 @@ import { SslModeBadge } from "@/components/ssl-badge";
 import { SecretBadge } from "@/components/secret-badge";
 import { ManagedBadge } from "@/components/managed-badge";
 import { MiddleTruncate } from "@/components/middle-truncate";
-import { fmtPgVersion } from "@/lib/utils";
+import { fmtPgVersion, RUN_HISTORY_SLOTS } from "@/lib/utils";
 import { can } from "@/lib/rbac";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -57,9 +58,10 @@ export default async function InstanceDetailPage({ params }: Props) {
   }
 
   const me = await getMe();
-  const [databases, activeRuns, settings] = await Promise.all([
+  const [databases, activeRuns, recentRuns, settings] = await Promise.all([
     listDatabases(id).catch(() => []),
     listActiveRuns().catch(() => []),
+    listRecentRuns(id, RUN_HISTORY_SLOTS).catch(() => []),
     getSettings().catch(() => null),
   ]);
 
@@ -175,6 +177,7 @@ export default async function InstanceDetailPage({ params }: Props) {
         instanceId={id}
         databases={databases}
         initialActiveRuns={activeRuns}
+        recentRuns={recentRuns}
         defaultStorageSize={settings?.default_storage_size ?? ""}
         defaultStorageType={settings?.default_storage_type ?? ""}
         headRole={me.head_role}

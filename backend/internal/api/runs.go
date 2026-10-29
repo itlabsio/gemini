@@ -46,6 +46,25 @@ func (s *Server) listActiveRuns(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, runs)
 }
 
+// listRecentRuns — последние per_db прогонов каждой базы инстанса: полоска
+// успешных/упавших запусков в таблице баз.
+func (s *Server) listRecentRuns(w http.ResponseWriter, r *http.Request) {
+	instID := mux.Vars(r)["id"]
+	if _, ok := s.authorizeInstance(w, r, instID, auth.RoleViewer); !ok {
+		return
+	}
+	perDB, _ := strconv.Atoi(r.URL.Query().Get("per_db"))
+	if perDB <= 0 || perDB > 50 {
+		perDB = 20
+	}
+	runs, err := s.d.Store.RecentRunsByInstance(r.Context(), instID, perDB)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, runs)
+}
+
 func (s *Server) getRun(w http.ResponseWriter, r *http.Request) {
 	run, err := s.d.Store.GetRun(r.Context(), mux.Vars(r)["id"])
 	if err != nil {

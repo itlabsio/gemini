@@ -71,6 +71,9 @@ export const listDatabases = (instanceId: string) =>
   apiFetch<Database[]>(`/api/instances/${instanceId}/databases`);
 export const listRuns = (qs = "") => apiFetch<BackupRun[]>(`/api/runs${qs}`);
 export const listActiveRuns = () => apiFetch<BackupRun[]>("/api/runs/active");
+/** Последние perDb прогонов каждой базы инстанса, от новых к старым. */
+export const listRecentRuns = (instanceId: string, perDb: number) =>
+  apiFetch<BackupRun[]>(`/api/instances/${instanceId}/runs/recent?per_db=${perDb}`);
 export const cancelRun = (id: string) =>
   apiFetch<BackupRun>(`/api/runs/${id}/cancel`, { method: "POST" });
 export const listPairings = () => apiFetch<HeadPairing[]>("/api/pairings");

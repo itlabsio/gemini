@@ -74,6 +74,7 @@ func NewRouter(d Deps) http.Handler {
 	apiR.HandleFunc("/instances/{id}/managed-by", auth.RequireSuperuser(s.clearInstanceManagedBy)).Methods(http.MethodDelete)
 	apiR.HandleFunc("/instances/{id}/discover", auth.RequireAnyProject(auth.RoleAdmin, s.discoverInstance)).Methods(http.MethodPost)
 	apiR.HandleFunc("/instances/{id}/databases", auth.RequireAnyProject(auth.RoleViewer, s.listDatabases)).Methods(http.MethodGet)
+	apiR.HandleFunc("/instances/{id}/runs/recent", auth.RequireAnyProject(auth.RoleViewer, s.listRecentRuns)).Methods(http.MethodGet)
 
 	// Имена полей секрета Vault для сопоставления в UI (значения не отдаются).
 	apiR.HandleFunc("/vault/secret-keys", auth.RequireAnyProject(auth.RoleAdmin, s.vaultSecretKeys)).Methods(http.MethodPost)

@@ -39,22 +39,47 @@ export function RunStatusCell({
         <StatusBadge status={status} />
       </button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {title}
-              <StatusBadge status={status} />
-            </DialogTitle>
-            <DialogDescription>
-              Сообщение от pg_dump / pg_restore или пира
-            </DialogDescription>
-          </DialogHeader>
-          <pre className="max-h-[50vh] overflow-auto rounded-md border bg-muted/40 p-3 text-xs whitespace-pre-wrap break-words">
-            {error}
-          </pre>
-        </DialogContent>
-      </Dialog>
+      <RunErrorDialog
+        open={open}
+        onOpenChange={setOpen}
+        status={status}
+        error={error}
+        title={title}
+      />
     </>
+  );
+}
+
+/** Модалка с полным текстом ошибки прогона. */
+export function RunErrorDialog({
+  open,
+  onOpenChange,
+  status,
+  error,
+  title = "Детали ошибки",
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  status?: string | null;
+  error?: string | null;
+  title?: string;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {title}
+            <StatusBadge status={status} />
+          </DialogTitle>
+          <DialogDescription>
+            Сообщение от pg_dump / pg_restore или пира
+          </DialogDescription>
+        </DialogHeader>
+        <pre className="max-h-[50vh] overflow-auto rounded-md border bg-muted/40 p-3 text-xs whitespace-pre-wrap break-words">
+          {error}
+        </pre>
+      </DialogContent>
+    </Dialog>
   );
 }

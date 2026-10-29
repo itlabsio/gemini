@@ -180,6 +180,33 @@ func (s *Store) ListActiveRunsInProjects(ctx context.Context, projects []string,
 	return out, rows.Err()
 }
 
+// RecentRunsByInstance — последние perDB прогонов каждой базы инстанса (для
+// полоски истории в UI), от новых к старым внутри базы. Доступ к инстансу
+// проверяет вызывающий.
+func (s *Store) RecentRunsByInstance(ctx context.Context, instanceID string, perDB int) ([]model.BackupRun, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+runCols+` FROM (
+			SELECT r.*, ROW_NUMBER() OVER (PARTITION BY r.database_id ORDER BY r.created_at DESC) AS rn
+			FROM backup_runs r JOIN databases d ON d.id = r.database_id
+			WHERE d.instance_id = $1
+		) t
+		WHERE rn <= $2
+		ORDER BY database_id, created_at DESC`, instanceID, perDB)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.BackupRun{}
+	for rows.Next() {
+		r, err := scanRun(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *r)
+	}
+	return out, rows.Err()
+}
+
 // GetRun возвращает один прогон.
 func (s *Store) GetRun(ctx context.Context, id string) (*model.BackupRun, error) {
 	r, err := scanRun(s.pool.QueryRow(ctx, `SELECT `+runCols+` FROM backup_runs WHERE id = $1`, id))

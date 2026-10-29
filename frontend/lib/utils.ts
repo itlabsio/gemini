@@ -11,6 +11,9 @@ export function cn(...inputs: ClassValue[]) {
  * `utc: true` фиксирует пояс UTC — нужно для детерминированного первого рендера
  * в SSR/гидрации; браузерный пояс подставляет <LocalDateTime> после монтирования.
  */
+/** Сколько последних прогонов базы показывает полоска истории в таблице баз. */
+export const RUN_HISTORY_SLOTS = 20;
+
 export function fmtDateTime(ts?: string | null, opts?: { utc?: boolean }): string {
   if (!ts) return "—";
   const d = new Date(ts);
