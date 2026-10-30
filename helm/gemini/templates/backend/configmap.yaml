@@ -20,6 +20,9 @@ data:
   S3_BUCKET: {{ .Values.s3.bucket | quote }}
   S3_PATH_STYLE: {{ .Values.s3.pathStyle | quote }}
   S3_USE_SSL: {{ .Values.s3.useSSL | quote }}
+  {{- with .Values.s3.name }}
+  S3_NAME: {{ . | quote }}
+  {{- end }}
   S3_DOWNLOADABLE: {{ .Values.s3.downloadable | quote }}
 
   VAULT_ENABLED: {{ .Values.vault.enabled | quote }}

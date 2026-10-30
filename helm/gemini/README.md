@@ -48,6 +48,7 @@
 | oidc.existingSecret | string | `"gemini-oidc"` | k8s Secret для frontend (next-auth) с ключами:    KEYCLOAK_CLIENT_SECRET, AUTH_SECRET. Backend этот секрет не использует. |
 | ownDatabase.existingSecret | string | `"gemini-db-credentials"` | k8s Secret с ключом POSTGRES_URL (dsn собственной БД метаданных).    Чарт свою БД НЕ разворачивает — ожидается внешний PostgreSQL с расширением    pgcrypto (роль dsn должна иметь право CREATE EXTENSION либо pgcrypto    предустановлен). Миграции накатывает отдельный Job (helm hook). |
 | encryptionKey | object | `{"existingSecret":"gemini-encryption-key"}` | k8s Secret с ключом SECRET_ENCRYPTION_KEY (ровно 32 байта) для шифрования    plain-паролей подключений в собственной БД at rest. |
+| s3.name | string | `""` | Имя встроенного бакета в UI (выбор бакета при скачивании, настройки); пусто — имя самого бакета |
 | s3.endpoint | string | `"storage.yandexcloud.net"` | Endpoint S3-совместимого хранилища дампов |
 | s3.region | string | `"ru-central1"` | Регион S3 |
 | s3.bucket | string | `"gemini-dumps"` | Бакет для дампов |

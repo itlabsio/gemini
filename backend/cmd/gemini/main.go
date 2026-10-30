@@ -128,8 +128,12 @@ func runServe() {
 	// Дампы заливаются во все включённые (fan-out).
 	var builtIn *model.S3Bucket
 	if cfg.S3.Bucket != "" && cfg.S3.AccessKey != "" {
+		name := cfg.S3.Name
+		if name == "" {
+			name = cfg.S3.Bucket
+		}
 		builtIn = &model.S3Bucket{
-			Name: "helm", Endpoint: cfg.S3.Endpoint, Region: cfg.S3.Region, Bucket: cfg.S3.Bucket,
+			Name: name, Endpoint: cfg.S3.Endpoint, Region: cfg.S3.Region, Bucket: cfg.S3.Bucket,
 			AccessKeyID: cfg.S3.AccessKey, SecretAccessKey: cfg.S3.SecretKey,
 			PathStyle: cfg.S3.UsePathStyle, UseSSL: cfg.S3.UseSSL, Downloadable: cfg.S3.Downloadable,
 		}

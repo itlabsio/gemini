@@ -81,6 +81,8 @@ type OIDCConfig struct {
 
 // S3Config — доступ к промежуточному хранилищу дампов.
 type S3Config struct {
+	// Name — имя встроенного бакета в UI; пусто → имя самого бакета.
+	Name         string
 	Endpoint     string
 	Region       string
 	Bucket       string
@@ -137,6 +139,7 @@ func Load() (*Config, error) {
 			ClientID:  os.Getenv("OIDC_CLIENT_ID"),
 		},
 		S3: S3Config{
+			Name:         os.Getenv("S3_NAME"),
 			Endpoint:     env("S3_ENDPOINT", "storage.yandexcloud.net"),
 			Region:       env("S3_REGION", "ru-central1"),
 			Bucket:       os.Getenv("S3_BUCKET"),
