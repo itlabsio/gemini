@@ -323,6 +323,10 @@ type RunUpdate struct {
 	ErrorMessage     *string
 	MarkStarted      bool
 	MarkFinished     bool
+	// StartedAt/FinishedAt — фактические времена из Job'а: перекрывают
+	// приблизительный NOW() от MarkStarted/MarkFinished.
+	StartedAt  *time.Time
+	FinishedAt *time.Time
 }
 
 // UpdateRun применяет переход статуса.
@@ -348,10 +352,14 @@ func (s *Store) UpdateRun(ctx context.Context, id string, u RunUpdate) (*model.B
 	if u.ErrorMessage != nil {
 		add("error_message", *u.ErrorMessage)
 	}
-	if u.MarkStarted {
+	if u.StartedAt != nil {
+		add("started_at", *u.StartedAt)
+	} else if u.MarkStarted {
 		set = append(set, "started_at = COALESCE(started_at, NOW())")
 	}
-	if u.MarkFinished {
+	if u.FinishedAt != nil {
+		add("finished_at", *u.FinishedAt)
+	} else if u.MarkFinished {
 		set = append(set, "finished_at = NOW()")
 	}
 	q := `UPDATE backup_runs SET ` + strings.Join(set, ", ") + ` WHERE id = $1 RETURNING ` + runCols

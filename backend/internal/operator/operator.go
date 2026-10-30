@@ -492,7 +492,7 @@ func (o *Operator) failIfPodNotStarted(ctx context.Context, js k8s.JobStatus, ti
 		log.Printf("operator: delete stuck job %s: %v", js.Name, err)
 		return
 	}
-	o.onRunFailed(ctx, *run, fmt.Sprintf("под не запустился за %s — %s", timeout, reason))
+	o.onRunFailed(ctx, *run, &js, fmt.Sprintf("под не запустился за %s — %s", timeout, reason))
 }
 
 // ErrRunNotActive — прогон уже завершён, останавливать нечего.
@@ -533,7 +533,7 @@ func (o *Operator) CancelRun(ctx context.Context, runID, by string) (*model.Back
 	if by != "" {
 		msg += ": " + by
 	}
-	o.onRunFailed(ctx, *run, msg)
+	o.onRunFailed(ctx, *run, nil, msg)
 	return o.store.GetRun(ctx, runID)
 }
 
@@ -567,7 +567,7 @@ func (o *Operator) reconcileOnce(ctx context.Context) error {
 		}
 		switch js.Phase {
 		case k8s.PhaseSucceeded:
-			o.onRunSucceeded(ctx, *run)
+			o.onRunSucceeded(ctx, *run, &js)
 		case k8s.PhaseFailed:
 			// Условие Job'а ("BackoffLimitExceeded: …") саму ошибку не несёт —
 			// вытаскиваем её из подов; если не вышло, оставляем условие Job'а.
@@ -575,7 +575,7 @@ func (o *Operator) reconcileOnce(ctx context.Context) error {
 			if detail := o.k8s.FailureDetail(ctx, js.Name); detail != "" {
 				msg = detail
 			}
-			o.onRunFailed(ctx, *run, msg)
+			o.onRunFailed(ctx, *run, &js, msg)
 		}
 	}
 	o.reapStuckRuns(ctx, statuses)
@@ -621,7 +621,7 @@ func (o *Operator) reapStuckRuns(ctx context.Context, statuses []k8s.JobStatus) 
 		}
 		log.Printf("operator: reaper — run %s (%s, job=%q) active %s+ with no Job in cluster → failed",
 			run.ID, run.Kind, run.K8sJobName, stuckRunGrace)
-		o.onRunFailed(ctx, run, "k8s Job отсутствует в кластере — прогон принудительно закрыт")
+		o.onRunFailed(ctx, run, nil, "k8s Job отсутствует в кластере — прогон принудительно закрыт")
 	}
 }
 
@@ -668,7 +668,7 @@ func (o *Operator) runForJob(ctx context.Context, js k8s.JobStatus) *model.Backu
 		return nil
 	}
 	updated, err := o.store.UpdateRun(ctx, run.ID, store.RunUpdate{
-		Status: model.StatusRunning, K8sJobName: &js.Name, MarkStarted: true,
+		Status: model.StatusRunning, K8sJobName: &js.Name, MarkStarted: true, StartedAt: js.Started,
 	})
 	if err != nil {
 		return nil
@@ -677,8 +677,20 @@ func (o *Operator) runForJob(ctx context.Context, js k8s.JobStatus) *model.Backu
 	return updated
 }
 
-func (o *Operator) onRunSucceeded(ctx context.Context, run model.BackupRun) {
-	updated, err := o.store.UpdateRun(ctx, run.ID, store.RunUpdate{Status: model.StatusSucceeded, MarkFinished: true})
+// jobTimes — фактические старт/завершение Job'а для RunUpdate; js == nil (Job'а
+// нет: reaper, отмена) — nil, и UpdateRun ставит NOW().
+func jobTimes(js *k8s.JobStatus) (started, finished *time.Time) {
+	if js == nil {
+		return nil, nil
+	}
+	return js.Started, js.Finished
+}
+
+func (o *Operator) onRunSucceeded(ctx context.Context, run model.BackupRun, js *k8s.JobStatus) {
+	started, finished := jobTimes(js)
+	updated, err := o.store.UpdateRun(ctx, run.ID, store.RunUpdate{
+		Status: model.StatusSucceeded, MarkFinished: true, StartedAt: started, FinishedAt: finished,
+	})
 	if err != nil {
 		log.Printf("operator: mark succeeded %s: %v", run.ID, err)
 		return
@@ -727,13 +739,14 @@ func (o *Operator) onRunSucceeded(ctx context.Context, run model.BackupRun) {
 	o.notifySuccess(ctx, o.runEvent(ctx, db, run.Kind, run.ID, ""))
 }
 
-func (o *Operator) onRunFailed(ctx context.Context, run model.BackupRun, msg string) {
+func (o *Operator) onRunFailed(ctx context.Context, run model.BackupRun, js *k8s.JobStatus, msg string) {
 	if msg == "" {
 		msg = "job failed"
 	}
 	msg = notify.Sanitize(msg)
+	started, finished := jobTimes(js)
 	updated, err := o.store.UpdateRun(ctx, run.ID, store.RunUpdate{
-		Status: model.StatusFailed, ErrorMessage: &msg, MarkFinished: true,
+		Status: model.StatusFailed, ErrorMessage: &msg, MarkFinished: true, StartedAt: started, FinishedAt: finished,
 	})
 	if err != nil {
 		log.Printf("operator: mark failed %s: %v", run.ID, err)

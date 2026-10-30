@@ -34,6 +34,10 @@ type JobStatus struct {
 	Phase      Phase
 	Message    string
 	Created    time.Time
+	// Started/Finished — фактические status.startTime и время завершения Job'а
+	// (completionTime; у упавшего — lastTransitionTime условия Failed). nil, пока неизвестны.
+	Started  *time.Time
+	Finished *time.Time
 }
 
 // TriggerJobFromCronJob создаёт Job из шаблона CronJob'а базы — ручной запуск
@@ -315,6 +319,9 @@ func jobStatus(j *batchv1.Job) JobStatus {
 		Phase:      PhaseRunning,
 		Created:    j.CreationTimestamp.Time,
 	}
+	if t := j.Status.StartTime; t != nil {
+		st.Started = &t.Time
+	}
 	for _, cond := range j.Status.Conditions {
 		if cond.Status != "True" {
 			continue
@@ -322,8 +329,14 @@ func jobStatus(j *batchv1.Job) JobStatus {
 		switch cond.Type {
 		case batchv1.JobComplete:
 			st.Phase = PhaseSucceeded
+			if t := j.Status.CompletionTime; t != nil {
+				st.Finished = &t.Time
+			}
 		case batchv1.JobFailed:
 			st.Phase = PhaseFailed
+			if !cond.LastTransitionTime.IsZero() {
+				st.Finished = &cond.LastTransitionTime.Time
+			}
 			st.Message = cond.Reason
 			if cond.Message != "" {
 				st.Message = cond.Reason + ": " + cond.Message
