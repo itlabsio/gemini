@@ -14,6 +14,7 @@ import type {
   Me,
   Project,
   ResourceSpec,
+  RunsPage,
   S3Bucket,
   Settings,
 } from "@/lib/types";
@@ -89,7 +90,8 @@ export const listInstances = () => apiFetch<Instance[]>("/api/instances");
 export const getInstance = (id: string) => apiFetch<Instance>(`/api/instances/${id}`);
 export const listDatabases = (instanceId: string) =>
   apiFetch<Database[]>(`/api/instances/${instanceId}/databases`);
-export const listRuns = (qs = "") => apiFetch<BackupRun[]>(`/api/runs${qs}`);
+/** История прогонов: qs — фильтры и курсор before. */
+export const listRuns = (qs = "") => apiFetch<RunsPage>(`/api/runs${qs}`);
 /** Журнал аудита (superuser / security): qs — фильтры и курсор before. */
 export const listAudit = (qs = "") => apiFetch<AuditPage>(`/api/audit${qs}`);
 export const listAuditActors = () => apiFetch<string[]>("/api/audit/actors");

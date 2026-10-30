@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { X } from "lucide-react";
+import { ChevronRight, ListRestart, X } from "lucide-react";
 import { getMe, listDatabases, listInstances, listRuns } from "@/lib/api";
-import type { BackupRun, Me } from "@/lib/types";
+import type { Me, RunsPage } from "@/lib/types";
 import { can } from "@/lib/rbac";
 import { fmtPgVersion } from "@/lib/utils";
 import { LocalDateTime } from "@/components/local-date-time";
@@ -51,24 +51,35 @@ async function downloadableDbs(me: Me): Promise<Map<string, DownloadableDb>> {
 export default async function RunsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; kind?: string; database_id?: string }>;
+  searchParams: Promise<{ status?: string; kind?: string; database_id?: string; before?: string }>;
 }) {
   const sp = await searchParams;
   const qs = new URLSearchParams();
   if (sp.status) qs.set("status", sp.status);
   if (sp.kind) qs.set("kind", sp.kind);
   if (sp.database_id) qs.set("database_id", sp.database_id);
+  if (sp.before) qs.set("before", sp.before);
 
-  let runs: BackupRun[] = [];
+  let page: RunsPage = { items: [], next_before: "" };
   let error: string | null = null;
   let dumpDbs = new Map<string, DownloadableDb>();
   try {
     const [list, me] = await Promise.all([listRuns(qs.toString() ? `?${qs}` : ""), getMe()]);
-    runs = list;
+    page = list;
     dumpDbs = await downloadableDbs(me);
   } catch (e) {
     error = e instanceof Error ? e.message : "Ошибка загрузки";
   }
+  const runs = page.items;
+
+  // Ссылки пагинации сохраняют фильтры страницы.
+  const linkWith = (before?: string) => {
+    const next = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (v && k !== "before") next.set(k, v);
+    if (before) next.set("before", before);
+    const s = next.toString();
+    return s ? `/runs?${s}` : "/runs";
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -113,8 +124,13 @@ export default async function RunsPage({
                 <TableCell>
                   <RunStatusCell status={r.status} error={r.error_message} />
                 </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {r.trigger}
+                <TableCell className="max-w-[14rem] truncate text-muted-foreground">
+                  {/* Ручной запуск — кто запустил (email, без него — subject токена). */}
+                  {r.trigger === "manual" && r.initiated_by ? (
+                    <span title={`manual · ${r.initiated_by}`}>{r.initiated_by}</span>
+                  ) : (
+                    r.trigger
+                  )}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-muted-foreground">
                   <LocalDateTime value={r.started_at} />
@@ -177,6 +193,29 @@ export default async function RunsPage({
           </TableBody>
         </Table>
       </div>
+
+      {!error && (sp.before || page.next_before) && (
+        <div className="flex items-center justify-between gap-3">
+          {sp.before ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href={linkWith()}>
+                <ListRestart />
+                К последним
+              </Link>
+            </Button>
+          ) : (
+            <span />
+          )}
+          {page.next_before && (
+            <Button asChild variant="outline" size="sm">
+              <Link href={linkWith(page.next_before)}>
+                Более ранние
+                <ChevronRight />
+              </Link>
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

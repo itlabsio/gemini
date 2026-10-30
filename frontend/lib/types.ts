@@ -145,6 +145,12 @@ export interface DumpDownload {
   extensions: string[];
 }
 
+export interface RunsPage {
+  items: BackupRun[];
+  /** Курсор следующей (более старой) страницы; "" — дальше прогонов нет */
+  next_before: string;
+}
+
 export interface RunPeerStatus {
   peer_url: string;
   status: RunStatus;

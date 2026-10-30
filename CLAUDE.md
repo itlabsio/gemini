@@ -52,7 +52,7 @@
 `Instance` (сервер PostgreSQL) → `Database` (бэкапится/нет, cron) → `BackupRun` (kind dump|restore, trigger,
 `event_key` для идемпотентности). Target: `DatabaseMapping` (source external_id ↔ локальная `Database`,
 `s3_prefix`, `target_owner`). `HeadPairing`/`PairingSecret` — связь source↔target. `S3Bucket`, `Settings`, `Project` (RBAC; `instances.project`).
-Миграции пронумерованы `001…025`; следующая — `026_*.sql`.
+Миграции пронумерованы `001…026`; следующая — `027_*.sql`.
 
 ### Потоки
 - **Backup (source):** CronJob/ручной запуск → `StartDump` → Job → `runDump` → S3 (`.dump`, `.sha256`, extensions)

@@ -78,11 +78,19 @@ func (s *Store) loadPeerStatuses(ctx context.Context, runs []model.BackupRun) er
 	return rows.Err()
 }
 
+// RunCursor — позиция в истории (от новых к старым): страница начинается с
+// прогонов строго раньше (CreatedAt, ID).
+type RunCursor struct {
+	CreatedAt time.Time
+	ID        string
+}
+
 // RunFilter — параметры выборки истории.
 type RunFilter struct {
 	DatabaseID string
 	Kind       model.RunKind
 	Status     model.RunStatus
+	Before     *RunCursor // nil — с самых новых
 	Limit      int
 	// RestrictProjects ограничивает выборку прогонами баз инстансов из Projects
 	// (RBAC). Пустой Projects при RestrictProjects=true — не вернуть ничего.
@@ -115,10 +123,14 @@ func (s *Store) ListRuns(ctx context.Context, f RunFilter) ([]model.BackupRun, e
 		args = append(args, nonNil(f.Projects))
 		where = append(where, runProjectScope+"$"+itoa(len(args))+"))")
 	}
+	if f.Before != nil {
+		args = append(args, f.Before.CreatedAt, f.Before.ID)
+		where = append(where, "(created_at, id) < ($"+itoa(len(args)-1)+", $"+itoa(len(args))+")")
+	}
 	if len(where) > 0 {
 		q += " WHERE " + strings.Join(where, " AND ")
 	}
-	q += " ORDER BY created_at DESC"
+	q += " ORDER BY created_at DESC, id DESC"
 	if f.Limit <= 0 || f.Limit > 500 {
 		f.Limit = 200
 	}
