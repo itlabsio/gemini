@@ -26,21 +26,36 @@ func (s *Server) audit(r *http.Request, action, target string, detail map[string
 	s.writeAudit(r, id, action, target, detail)
 }
 
+// auditStrict — как audit, но с ошибкой: для действий, которые без записи в
+// журнале выполнять нельзя (выдача ссылки на дамп).
+func (s *Server) auditStrict(r *http.Request, action, target string, detail map[string]any) error {
+	id, _ := auth.FromContext(r.Context())
+	return s.insertAudit(r, id, action, target, detail)
+}
+
 func (s *Server) writeAudit(r *http.Request, id auth.Identity, action, target string, detail map[string]any) {
-	actor := id.Email
-	if actor == "" {
-		actor = id.Subject
+	if err := s.insertAudit(r, id, action, target, detail); err != nil {
+		log.Printf("api: audit write failed: %v", err)
 	}
+}
+
+func (s *Server) insertAudit(r *http.Request, id auth.Identity, action, target string, detail map[string]any) error {
 	var raw []byte
 	if detail != nil {
 		raw, _ = json.Marshal(detail)
 	}
-	if err := s.d.Store.WriteAudit(r.Context(), store.AuditEntry{
-		Actor: actor, Action: action, Target: target, Detail: raw,
+	return s.d.Store.WriteAudit(r.Context(), store.AuditEntry{
+		Actor: auditActor(id), Action: action, Target: target, Detail: raw,
 		IP: clientIP(r), UserAgent: truncate(r.UserAgent(), 512),
-	}); err != nil {
-		log.Printf("api: audit write failed: %v", err)
+	})
+}
+
+// auditActor — кто записывается в журнал: email, без него — subject токена.
+func auditActor(id auth.Identity) string {
+	if id.Email != "" {
+		return id.Email
 	}
+	return id.Subject
 }
 
 // clientIP — адрес пользователя. Браузерные запросы приходят либо через ingress

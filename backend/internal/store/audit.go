@@ -143,3 +143,27 @@ func (s *Store) AuditActors(ctx context.Context) ([]string, error) {
 	}
 	return out, rows.Err()
 }
+
+// RecentAuditTimes — время последних limit записей действия action от actor,
+// свежие первыми. Основа лимитов, общих для всех реплик: журнал один на всех.
+// Подзапрос ограничен limit строками — по индексу (actor, id DESC) или
+// (action, id DESC), без скана всей истории пользователя.
+func (s *Store) RecentAuditTimes(ctx context.Context, actor, action string, limit int) ([]time.Time, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT created_at FROM audit_log
+		WHERE actor = $1 AND action = $2
+		ORDER BY id DESC LIMIT $3`, actor, action, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []time.Time
+	for rows.Next() {
+		var t time.Time
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}

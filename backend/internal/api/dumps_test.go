@@ -2,6 +2,7 @@ package api
 
 import (
 	"testing"
+	"time"
 
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/storage"
@@ -64,5 +65,27 @@ func TestS3BucketRequestDownloadable(t *testing.T) {
 	req.Downloadable = &off
 	if in, _ := req.input(true); in.Downloadable {
 		t.Error("explicit downloadable=false ignored")
+	}
+}
+
+func TestDownloadRetryAfter(t *testing.T) {
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	// recent — свежие первыми, по одной выдаче в минуту.
+	recent := func(n int) []time.Time {
+		out := make([]time.Time, n)
+		for i := range out {
+			out[i] = now.Add(-time.Duration(i) * time.Minute)
+		}
+		return out
+	}
+	if got := downloadRetryAfter(recent(dumpDownloadLimit-1), now); got != 0 {
+		t.Errorf("below limit: wait %s, want 0", got)
+	}
+	// Самая старая из лимитных выдач — 9 минут назад: ждать ещё минуту.
+	if got := downloadRetryAfter(recent(dumpDownloadLimit), now); got != time.Minute {
+		t.Errorf("at limit: wait %s, want 1m", got)
+	}
+	if got := downloadRetryAfter(recent(dumpDownloadLimit), now.Add(2*time.Minute)); got != 0 {
+		t.Errorf("window passed: wait %s, want 0", got)
 	}
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Copy, Download, Loader2 } from "lucide-react";
 import type { Dump, DumpDownload } from "@/lib/types";
@@ -36,6 +36,10 @@ function fmtBytes(n: number): string {
   }
   return `${i === 0 ? v : v.toFixed(1)} ${UNITS[i]}`;
 }
+
+// Выданную ссылку переиспользуем, пока до её истечения больше этого запаса:
+// повторное «Скачать» не идёт на сервер (новая ссылка, запись в аудит, лимит).
+const LINK_REUSE_MARGIN_MS = 60_000;
 
 /** Имя файла дампа без префикса <инстанс>/<база>/. */
 const baseName = (key: string) => key.slice(key.lastIndexOf("/") + 1);
@@ -142,20 +146,35 @@ function DumpRow({
   focused: boolean;
 }) {
   const [bucketId, setBucketId] = useState(dump.buckets[0]?.id ?? "");
-  const [result, setResult] = useState<DumpDownload | null>(null);
+  // Ссылки по бакетам: у каждого бакета своя.
+  const [links, setLinks] = useState<Record<string, DumpDownload>>({});
+  const result = links[bucketId] ?? null;
   const [pending, start] = useTransition();
+  // Двойной клик успевает до перерисовки с disabled — держим флаг синхронно.
+  const inFlight = useRef(false);
 
-  const onDownload = () =>
+  const onDownload = () => {
+    if (inFlight.current) return;
+    // S3 отдаёт файл с Content-Disposition: attachment — страница остаётся.
+    if (result && new Date(result.expires_at).getTime() - Date.now() > LINK_REUSE_MARGIN_MS) {
+      window.location.assign(result.url);
+      return;
+    }
+    inFlight.current = true;
     start(async () => {
-      const res = await downloadDumpAction(databaseId, dump.key, bucketId);
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
+      try {
+        const res = await downloadDumpAction(databaseId, dump.key, bucketId);
+        if (!res.ok) {
+          toast.error(res.error);
+          return;
+        }
+        setLinks((l) => ({ ...l, [bucketId]: res.download }));
+        window.location.assign(res.download.url);
+      } finally {
+        inFlight.current = false;
       }
-      setResult(res.download);
-      // S3 отдаёт файл с Content-Disposition: attachment — страница остаётся.
-      window.location.assign(res.download.url);
     });
+  };
 
   const copyLink = () => {
     if (!result) return;

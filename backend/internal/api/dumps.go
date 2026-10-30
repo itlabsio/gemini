@@ -3,8 +3,11 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +23,28 @@ const dumpSuffix = ".dump"
 
 // s3Timeout — потолок на обращения к S3 из обработчиков дампов.
 const s3Timeout = 15 * time.Second
+
+// actionDumpDownload — выдача ссылки на дамп в журнале аудита; по этим же
+// записям считается лимит выдачи.
+const actionDumpDownload = "database.dump.download"
+
+// Лимит выдачи ссылок одному пользователю: не больше dumpDownloadLimit за
+// dumpDownloadWindow по всем базам. Считается по журналу аудита — общий для
+// всех реплик API.
+const (
+	dumpDownloadLimit  = 10
+	dumpDownloadWindow = 10 * time.Minute
+)
+
+// downloadRetryAfter — через сколько можно выдать следующую ссылку; 0 — можно
+// сейчас. recent — время последних выдач, свежие первыми.
+func downloadRetryAfter(recent []time.Time, now time.Time) time.Duration {
+	if len(recent) < dumpDownloadLimit {
+		return 0
+	}
+	wait := dumpDownloadWindow - now.Sub(recent[dumpDownloadLimit-1])
+	return max(wait, 0)
+}
 
 // dumpPrefix — префикс дампов базы в S3: <имя инстанса>/<имя базы>/.
 func dumpPrefix(inst *model.Instance, db *model.Database) string {
@@ -145,6 +170,18 @@ func (s *Server) downloadDump(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "key is not a dump of this database")
 		return
 	}
+	recent, err := s.d.Store.RecentAuditTimes(r.Context(), auditActor(identity(r)), actionDumpDownload, dumpDownloadLimit)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if wait := downloadRetryAfter(recent, time.Now()); wait > 0 {
+		secs := max(int(wait.Round(time.Second).Seconds()), 1)
+		w.Header().Set("Retry-After", strconv.Itoa(secs))
+		writeError(w, http.StatusTooManyRequests, fmt.Sprintf(
+			"download link limit: %d per %s; next in %d s", dumpDownloadLimit, dumpDownloadWindow, secs))
+		return
+	}
 	st, err := s.d.Store.GetSettings(r.Context())
 	if err != nil {
 		writeStoreError(w, err)
@@ -188,9 +225,15 @@ func (s *Server) downloadDump(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "presign: "+err.Error())
 		return
 	}
-	s.audit(r, "database.dump.download", id, map[string]any{
+	// Ссылку без записи в журнале не отдаём: выдача доступа к прод-данным
+	// должна быть видна ИБ, а по этим записям считается лимит.
+	if err := s.auditStrict(r, actionDumpDownload, id, map[string]any{
 		"key": req.Key, "bucket": c.Title(), "ttl_minutes": st.DownloadURLTTLMinutes,
-	})
+	}); err != nil {
+		log.Printf("api: dump download audit: %v", err)
+		writeError(w, http.StatusServiceUnavailable, "audit log unavailable, download link not issued")
+		return
+	}
 	exts := storage.ParseExtensions(raw)
 	if exts == nil {
 		exts = []string{}
