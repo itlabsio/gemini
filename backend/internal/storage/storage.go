@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -35,11 +36,13 @@ const ExtensionsSuffix = ".extensions"
 
 // Client — обёртка над minio-go под конкретный бакет.
 type Client struct {
-	mc       *minio.Client
-	id       string
-	name     string
-	endpoint string
-	bucket   string
+	mc           *minio.Client
+	id           string
+	title        string
+	name         string
+	endpoint     string
+	bucket       string
+	downloadable bool
 }
 
 // bucketLabel — как бакет показывается в логах и нотификациях: s3://bucket (endpoint).
@@ -105,11 +108,18 @@ func New(b model.S3Bucket) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{mc: mc, id: b.ID, name: bucketLabel(b.Endpoint, b.Bucket), endpoint: b.Endpoint, bucket: b.Bucket}, nil
+	return &Client{mc: mc, id: b.ID, title: b.Name, name: bucketLabel(b.Endpoint, b.Bucket),
+		endpoint: b.Endpoint, bucket: b.Bucket, downloadable: b.Downloadable}, nil
 }
 
 // ID — id бакета (BuiltInID для бакета из env).
 func (c *Client) ID() string { return c.id }
+
+// Title — имя бакета в UI (model.S3Bucket.Name).
+func (c *Client) Title() string { return c.title }
+
+// Downloadable — можно ли выдавать из бакета presigned-ссылки на дампы.
+func (c *Client) Downloadable() bool { return c.downloadable }
 
 // Name — бакет для логов и нотификаций: s3://bucket (endpoint).
 func (c *Client) Name() string { return c.name }
@@ -134,11 +144,15 @@ type Object struct {
 	Key          string
 	Size         int64
 	LastModified time.Time
+	// Ready — рядом лежит <key>.sha256, то есть дамп залит полностью.
+	Ready bool
 }
 
-// ListDumps возвращает объекты дампов под префиксом (без .sha256-файлов).
+// ListDumps возвращает объекты дампов под префиксом (без sidecar-файлов) с
+// признаком готовности — из того же листинга, без StatObject на каждый дамп.
 func (c *Client) ListDumps(ctx context.Context, prefix string) ([]Object, error) {
 	var out []Object
+	sums := map[string]bool{}
 	for info := range c.mc.ListObjects(ctx, c.bucket, minio.ListObjectsOptions{
 		Prefix:    prefix,
 		Recursive: true,
@@ -146,12 +160,18 @@ func (c *Client) ListDumps(ctx context.Context, prefix string) ([]Object, error)
 		if info.Err != nil {
 			return nil, info.Err
 		}
-		if strings.HasSuffix(info.Key, ChecksumSuffix) ||
-			strings.HasSuffix(info.Key, SignatureSuffix) ||
+		if key, ok := strings.CutSuffix(info.Key, ChecksumSuffix); ok {
+			sums[key] = true
+			continue
+		}
+		if strings.HasSuffix(info.Key, SignatureSuffix) ||
 			strings.HasSuffix(info.Key, ExtensionsSuffix) {
 			continue
 		}
 		out = append(out, Object{Key: info.Key, Size: info.Size, LastModified: info.LastModified})
+	}
+	for i := range out {
+		out[i].Ready = sums[out[i].Key]
 	}
 	return out, nil
 }
@@ -206,9 +226,15 @@ func (c *Client) ReadSignature(ctx context.Context, dumpKey string) (string, err
 	return strings.TrimSpace(string(b)), nil
 }
 
-// PresignGet выдаёт временную ссылку на скачивание объекта (для UI/отладки).
-func (c *Client) PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error) {
-	u, err := c.mc.PresignedGetObject(ctx, c.bucket, key, ttl, nil)
+// PresignGet выдаёт временную ссылку на скачивание объекта. Непустой filename
+// уходит в response-content-disposition: браузер сохранит файл под этим именем.
+// Подпись считается локально (регион задан в клиенте), в S3 запроса нет.
+func (c *Client) PresignGet(ctx context.Context, key, filename string, ttl time.Duration) (string, error) {
+	params := url.Values{}
+	if filename != "" {
+		params.Set("response-content-disposition", `attachment; filename="`+filename+`"`)
+	}
+	u, err := c.mc.PresignedGetObject(ctx, c.bucket, key, ttl, params)
 	if err != nil {
 		return "", err
 	}

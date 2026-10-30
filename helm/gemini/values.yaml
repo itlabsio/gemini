@@ -124,6 +124,8 @@ s3:
   pathStyle: true
   # -- Использовать HTTPS при обращении к S3
   useSSL: true
+  # -- Выдавать из бакета presigned-ссылки на скачивание дампов (бакет должен быть доступен из браузера)
+  downloadable: true
   # -- k8s Secret с ключами S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY
   existingSecret: gemini-s3-credentials
 

@@ -53,6 +53,7 @@
 | s3.bucket | string | `"gemini-dumps"` | Бакет для дампов |
 | s3.pathStyle | bool | `true` | Path-style адресация бакета (вместо virtual-hosted) |
 | s3.useSSL | bool | `true` | Использовать HTTPS при обращении к S3 |
+| s3.downloadable | bool | `true` | Выдавать из бакета presigned-ссылки на скачивание дампов (бакет должен быть доступен из браузера) |
 | s3.existingSecret | string | `"gemini-s3-credentials"` | k8s Secret с ключами S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY |
 | vault.enabled | bool | `false` | Включить интеграцию с Vault для секретов подключений |
 | vault.addr | string | `"https://vault.example.com:8200"` | Адрес Vault |

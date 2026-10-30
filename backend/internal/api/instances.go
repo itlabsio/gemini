@@ -76,6 +76,9 @@ type instanceRequest struct {
 	ExcludedDatabases []string `json:"excluded_databases"`
 	// Project — проект-владелец. Меняет только superuser; nil — не менять.
 	Project *string `json:"project"`
+	// Downloadable — скачивание дампов админами проекта. Меняет только
+	// superuser; nil — не менять (при создании — выключено).
+	Downloadable *bool `json:"downloadable"`
 }
 
 // cleanDBNames нормализует список исключённых баз: тримит, отбрасывает пустые и
@@ -117,6 +120,7 @@ func (req instanceRequest) validate(defaultRole model.InstanceRole) (store.Insta
 		VaultPasswordKey: strings.TrimSpace(req.VaultPasswordKey),
 
 		ExcludedDatabases: cleanDBNames(req.ExcludedDatabases),
+		Downloadable:      req.Downloadable,
 	}
 	if req.Project != nil {
 		p := strings.TrimSpace(*req.Project)
@@ -285,13 +289,24 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 	} else {
 		in.Project = nil
 	}
+	// Скачивание дампов — доступ к прод-данным: решает superuser, не admin проекта.
+	var detail map[string]any
+	if in.Downloadable != nil && *in.Downloadable != cur.Downloadable {
+		if !identity(r).Superuser {
+			writeError(w, http.StatusForbidden, "only superuser can change dump downloads of an instance")
+			return
+		}
+		detail = map[string]any{"downloadable": *in.Downloadable}
+	} else {
+		in.Downloadable = nil
+	}
 	in.ManagedBy = managedBy(r)
 	inst, err := s.d.Store.UpdateInstance(r.Context(), id, in)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	s.audit(r, "instance.update", id, nil)
+	s.audit(r, "instance.update", id, detail)
 	writeJSON(w, http.StatusOK, inst)
 }
 

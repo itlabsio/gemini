@@ -88,6 +88,8 @@ type S3Config struct {
 	SecretKey    string
 	UsePathStyle bool
 	UseSSL       bool
+	// Downloadable — выдавать ли из встроенного бакета presigned-ссылки на дампы.
+	Downloadable bool
 }
 
 // VaultConfig — клиент HashiCorp Vault для резолва секретов подключений.
@@ -142,6 +144,7 @@ func Load() (*Config, error) {
 			SecretKey:    os.Getenv("S3_SECRET_ACCESS_KEY"),
 			UsePathStyle: envBool("S3_PATH_STYLE", true),
 			UseSSL:       envBool("S3_USE_SSL", true),
+			Downloadable: envBool("S3_DOWNLOADABLE", true),
 		},
 		Vault: VaultConfig{
 			Enabled:      envBool("VAULT_ENABLED", false),

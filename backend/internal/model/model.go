@@ -53,6 +53,10 @@ type Instance struct {
 	// ManagedBy — "terraform", если инстанс создан/изменён провайдером; "" — UI/API.
 	ManagedBy string `json:"managed_by"`
 
+	// Downloadable — админы проекта могут скачивать дампы баз инстанса
+	// (только Source). Меняет только superuser.
+	Downloadable bool `json:"downloadable"`
+
 	// RestoreMode — как target-голова восстанавливает базы этого инстанса.
 	// Пусто в API-ответе для source-инстансов. См. RestoreMode.
 	RestoreMode RestoreMode `json:"restore_mode,omitempty"`
@@ -202,6 +206,9 @@ type S3Bucket struct {
 	PathStyle bool `json:"path_style"`
 	UseSSL    bool `json:"use_ssl"`
 	Enabled   bool `json:"enabled"`
+	// Downloadable — из бакета можно выдавать админам проекта presigned-ссылки
+	// на дампы (бакет доступен из браузера пользователя).
+	Downloadable bool `json:"downloadable"`
 
 	// BuiltIn — бакет из env (Helm values.s3). В UI только для чтения.
 	BuiltIn bool `json:"built_in"`
@@ -312,10 +319,12 @@ type Settings struct {
 	NotifyOnSuccess bool `json:"notify_on_success"`
 	// AuditRetentionDays / RunsRetentionDays — сколько дней хранить журнал аудита
 	// и историю прогонов (активные и последний прогон вида по базе не удаляются).
-	AuditRetentionDays int32     `json:"audit_retention_days"`
-	RunsRetentionDays  int32     `json:"runs_retention_days"`
-	UpdatedAt          time.Time `json:"updated_at"`
-	UpdatedBy          string    `json:"updated_by"`
+	AuditRetentionDays int32 `json:"audit_retention_days"`
+	RunsRetentionDays  int32 `json:"runs_retention_days"`
+	// DownloadURLTTLMinutes — срок жизни presigned-ссылки на скачивание дампа.
+	DownloadURLTTLMinutes int32     `json:"download_url_ttl_minutes"`
+	UpdatedAt             time.Time `json:"updated_at"`
+	UpdatedBy             string    `json:"updated_by"`
 }
 
 // AuditRecord — запись журнала аудита для UI. ObjectName — имя объекта из

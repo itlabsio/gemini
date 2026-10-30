@@ -36,6 +36,8 @@ type s3BucketRequest struct {
 	PathStyle       bool   `json:"path_style"`
 	UseSSL          bool   `json:"use_ssl"`
 	Enabled         bool   `json:"enabled"`
+	// nil / не передан → true при создании, текущее значение при обновлении.
+	Downloadable *bool `json:"downloadable"`
 }
 
 // input валидирует запрос. secretRequired — при создании ключ обязателен,
@@ -51,6 +53,7 @@ func (req s3BucketRequest) input(secretRequired bool) (store.S3BucketInput, stri
 		PathStyle:       req.PathStyle,
 		UseSSL:          req.UseSSL,
 		Enabled:         req.Enabled,
+		Downloadable:    req.Downloadable == nil || *req.Downloadable,
 	}
 	switch {
 	case in.Name == "" || in.Endpoint == "" || in.Bucket == "" || in.AccessKeyID == "":
@@ -98,12 +101,20 @@ func (s *Server) updateS3Bucket(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
+	if req.Downloadable == nil {
+		cur, err := s.d.Store.GetS3Bucket(r.Context(), id)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		in.Downloadable = cur.Downloadable
+	}
 	b, err := s.d.Store.UpdateS3Bucket(r.Context(), id, in)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	s.audit(r, "s3_bucket.update", id, map[string]any{"name": b.Name, "enabled": b.Enabled})
+	s.audit(r, "s3_bucket.update", id, map[string]any{"name": b.Name, "enabled": b.Enabled, "downloadable": b.Downloadable})
 	writeJSON(w, http.StatusOK, b)
 }
 

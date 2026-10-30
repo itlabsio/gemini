@@ -33,12 +33,15 @@ type InstanceInput struct {
 	// ManagedBy — "terraform" помечает инстанс управляемым провайдером; "" при
 	// обновлении метку не трогает (снимается только ClearInstanceManagedBy).
 	ManagedBy string
+	// Downloadable — разрешено ли скачивание дампов. При создании nil → false,
+	// при обновлении nil оставляет текущее. Права на смену проверяет API.
+	Downloadable *bool
 }
 
 // instanceCols — только адресная часть, из таблицы instances.
 // Дескриптор кред подтягивается join'ом (см. instanceSelect); зашифрованный
 // пароль в этих выборках не участвует НИКОГДА — он читается лишь Credentials().
-const instanceCols = `i.id, i.role, i.name, COALESCE(i.project, ''), i.managed_by, i.host, i.port, i.restore_mode,
+const instanceCols = `i.id, i.role, i.name, COALESCE(i.project, ''), i.managed_by, i.downloadable, i.host, i.port, i.restore_mode,
 	i.ssl_mode, i.ssl_root_cert, i.discovery_db, i.excluded_databases, i.server_version_num,
 	i.created_by, i.created_at, i.updated_at,
 	c.auth_type, c.plain_username,
@@ -49,7 +52,7 @@ const instanceSelect = `SELECT ` + instanceCols + `
 
 func scanInstance(row pgx.Row) (*model.Instance, error) {
 	var i model.Instance
-	err := row.Scan(&i.ID, &i.Role, &i.Name, &i.Project, &i.ManagedBy, &i.Host, &i.Port, &i.RestoreMode,
+	err := row.Scan(&i.ID, &i.Role, &i.Name, &i.Project, &i.ManagedBy, &i.Downloadable, &i.Host, &i.Port, &i.RestoreMode,
 		&i.SSLMode, &i.SSLRootCert, &i.DiscoveryDB, &i.ExcludedDatabases, &i.ServerVersionNum,
 		&i.CreatedBy, &i.CreatedAt, &i.UpdatedAt,
 		&i.AuthType, &i.PlainUsername,
@@ -203,11 +206,11 @@ func (s *Store) CreateInstance(ctx context.Context, in InstanceInput, createdBy 
 
 	var id string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO instances (role, name, host, port, restore_mode, ssl_mode, ssl_root_cert, discovery_db, excluded_databases, created_by, project, managed_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NULLIF($11,''), $12)
+		INSERT INTO instances (role, name, host, port, restore_mode, ssl_mode, ssl_root_cert, discovery_db, excluded_databases, created_by, project, managed_by, downloadable)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NULLIF($11,''), $12, COALESCE($13, FALSE))
 		RETURNING id`,
 		in.Role, in.Name, in.Host, in.Port, in.RestoreMode, in.SSLMode, in.SSLRootCert, in.DiscoveryDB,
-		excludedArg(in.ExcludedDatabases), createdBy, derefStr(in.Project), in.ManagedBy,
+		excludedArg(in.ExcludedDatabases), createdBy, derefStr(in.Project), in.ManagedBy, in.Downloadable,
 	).Scan(&id); err != nil {
 		return nil, mapErr(err)
 	}
@@ -256,10 +259,12 @@ func (s *Store) UpdateInstance(ctx context.Context, id string, in InstanceInput)
 		UPDATE instances SET role=$2, name=$3, host=$4, port=$5, ssl_mode=$6, ssl_root_cert=$7,
 			discovery_db=$8, excluded_databases=$9, restore_mode=$10,
 			project = CASE WHEN $11::boolean THEN NULLIF($12,'') ELSE project END,
-			managed_by = CASE WHEN $13 <> '' THEN $13 ELSE managed_by END
+			managed_by = CASE WHEN $13 <> '' THEN $13 ELSE managed_by END,
+			downloadable = COALESCE($14, downloadable)
 		WHERE id=$1`,
 		id, in.Role, in.Name, in.Host, in.Port, in.SSLMode, in.SSLRootCert, in.DiscoveryDB,
-		excludedArg(in.ExcludedDatabases), in.RestoreMode, in.Project != nil, derefStr(in.Project), in.ManagedBy)
+		excludedArg(in.ExcludedDatabases), in.RestoreMode, in.Project != nil, derefStr(in.Project), in.ManagedBy,
+		in.Downloadable)
 	if err != nil {
 		return nil, mapErr(err)
 	}

@@ -18,11 +18,11 @@ func (s *Store) GetSettings(ctx context.Context) (*model.Settings, error) {
 		SELECT default_storage_type, default_storage_size, default_resources,
 		       default_pod_scheduling, job_ttl_minutes, job_pod_start_timeout_minutes,
 		       notify_on_failure, notify_on_success, audit_retention_days, runs_retention_days,
-		       updated_at, updated_by
+		       download_url_ttl_minutes, updated_at, updated_by
 		FROM app_settings WHERE id = TRUE`,
 	).Scan(&st.DefaultStorageType, &st.DefaultStorageSize, &resJSON, &schedJSON,
 		&st.JobTTLMinutes, &st.JobPodStartTimeoutMinutes, &st.NotifyOnFailure, &st.NotifyOnSuccess,
-		&st.AuditRetentionDays, &st.RunsRetentionDays, &st.UpdatedAt, &st.UpdatedBy)
+		&st.AuditRetentionDays, &st.RunsRetentionDays, &st.DownloadURLTTLMinutes, &st.UpdatedAt, &st.UpdatedBy)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -47,6 +47,7 @@ type SettingsInput struct {
 	NotifyOnSuccess           bool
 	AuditRetentionDays        int32
 	RunsRetentionDays         int32
+	DownloadURLTTLMinutes     int32
 }
 
 // UpdateSettings перезаписывает singleton-строку.
@@ -65,11 +66,11 @@ func (s *Store) UpdateSettings(ctx context.Context, in SettingsInput, updatedBy 
 		    default_pod_scheduling = $4, job_ttl_minutes = $5,
 		    job_pod_start_timeout_minutes = $6, notify_on_failure = $7, notify_on_success = $8,
 		    audit_retention_days = $9, runs_retention_days = $10,
-		    updated_at = NOW(), updated_by = $11
+		    download_url_ttl_minutes = $11, updated_at = NOW(), updated_by = $12
 		WHERE id = TRUE`,
 		in.DefaultStorageType, in.DefaultStorageSize, string(resJSON), schedJSON,
 		in.JobTTLMinutes, in.JobPodStartTimeoutMinutes, in.NotifyOnFailure, in.NotifyOnSuccess,
-		in.AuditRetentionDays, in.RunsRetentionDays, updatedBy)
+		in.AuditRetentionDays, in.RunsRetentionDays, in.DownloadURLTTLMinutes, updatedBy)
 	if err != nil {
 		return nil, err
 	}

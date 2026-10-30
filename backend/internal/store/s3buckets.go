@@ -22,16 +22,17 @@ type S3BucketInput struct {
 	PathStyle       bool
 	UseSSL          bool
 	Enabled         bool
+	Downloadable    bool
 }
 
 // s3BucketCols — без зашифрованного секрета: он читается только EnabledS3Buckets.
 const s3BucketCols = `id, name, endpoint, region, bucket, access_key_id,
-	path_style, use_ssl, enabled, created_by, created_at, updated_at`
+	path_style, use_ssl, enabled, downloadable, created_by, created_at, updated_at`
 
 func scanS3Bucket(row pgx.Row, extra ...any) (*model.S3Bucket, error) {
 	var b model.S3Bucket
 	dst := append([]any{&b.ID, &b.Name, &b.Endpoint, &b.Region, &b.Bucket, &b.AccessKeyID,
-		&b.PathStyle, &b.UseSSL, &b.Enabled, &b.CreatedBy, &b.CreatedAt, &b.UpdatedAt}, extra...)
+		&b.PathStyle, &b.UseSSL, &b.Enabled, &b.Downloadable, &b.CreatedBy, &b.CreatedAt, &b.UpdatedAt}, extra...)
 	if err := row.Scan(dst...); err != nil {
 		return nil, mapErr(err)
 	}
@@ -102,11 +103,11 @@ func (s *Store) CreateS3Bucket(ctx context.Context, in S3BucketInput, createdBy 
 	}
 	b, err := scanS3Bucket(s.pool.QueryRow(ctx, `
 		INSERT INTO s3_buckets (name, endpoint, region, bucket, access_key_id,
-			secret_access_key_encrypted, path_style, use_ssl, enabled, created_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+			secret_access_key_encrypted, path_style, use_ssl, enabled, downloadable, created_by)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		RETURNING `+s3BucketCols,
 		in.Name, in.Endpoint, in.Region, in.Bucket, in.AccessKeyID,
-		enc, in.PathStyle, in.UseSSL, in.Enabled, createdBy))
+		enc, in.PathStyle, in.UseSSL, in.Enabled, in.Downloadable, createdBy))
 	if err != nil {
 		return nil, mapS3BucketErr(err)
 	}
@@ -125,11 +126,11 @@ func (s *Store) UpdateS3Bucket(ctx context.Context, id string, in S3BucketInput)
 	b, err := scanS3Bucket(s.pool.QueryRow(ctx, `
 		UPDATE s3_buckets SET name=$2, endpoint=$3, region=$4, bucket=$5, access_key_id=$6,
 			secret_access_key_encrypted = COALESCE($7, secret_access_key_encrypted),
-			path_style=$8, use_ssl=$9, enabled=$10
+			path_style=$8, use_ssl=$9, enabled=$10, downloadable=$11
 		WHERE id=$1
 		RETURNING `+s3BucketCols,
 		id, in.Name, in.Endpoint, in.Region, in.Bucket, in.AccessKeyID,
-		enc, in.PathStyle, in.UseSSL, in.Enabled))
+		enc, in.PathStyle, in.UseSSL, in.Enabled, in.Downloadable))
 	if err != nil {
 		return nil, mapS3BucketErr(err)
 	}

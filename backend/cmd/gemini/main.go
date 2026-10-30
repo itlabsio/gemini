@@ -131,7 +131,7 @@ func runServe() {
 		builtIn = &model.S3Bucket{
 			Name: "helm", Endpoint: cfg.S3.Endpoint, Region: cfg.S3.Region, Bucket: cfg.S3.Bucket,
 			AccessKeyID: cfg.S3.AccessKey, SecretAccessKey: cfg.S3.SecretKey,
-			PathStyle: cfg.S3.UsePathStyle, UseSSL: cfg.S3.UseSSL,
+			PathStyle: cfg.S3.UsePathStyle, UseSSL: cfg.S3.UseSSL, Downloadable: cfg.S3.Downloadable,
 		}
 	} else {
 		log.Printf("gemini: S3 not configured in env — only buckets added in UI will be used")

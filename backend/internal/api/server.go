@@ -112,6 +112,8 @@ func NewRouter(d Deps) http.Handler {
 
 	if d.Cfg.IsSource() {
 		apiR.HandleFunc("/pairing/issue-code", auth.RequireSuperuser(s.issuePairingCode)).Methods(http.MethodPost)
+		apiR.HandleFunc("/databases/{id}/dumps", auth.RequireAnyProject(auth.RoleAdmin, s.listDumps)).Methods(http.MethodGet)
+		apiR.HandleFunc("/databases/{id}/dumps/download", auth.RequireAnyProject(auth.RoleAdmin, s.downloadDump)).Methods(http.MethodPost)
 	}
 	if d.Cfg.IsTarget() {
 		apiR.HandleFunc("/pairing/init", auth.RequireSuperuser(s.initPairing)).Methods(http.MethodPost)

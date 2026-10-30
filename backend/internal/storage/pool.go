@@ -107,11 +107,32 @@ func (p *Pool) Client(ctx context.Context, id string) (*Client, error) {
 // же во всех бакетах; берём самый свежий LastModified). Недоступный бакет не
 // мешает остальным — ошибка, только если не ответил ни один.
 func (p *Pool) ListDumps(ctx context.Context, prefix string) ([]Object, error) {
+	located, err := p.LocateDumps(ctx, prefix)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Object, 0, len(located))
+	for _, l := range located {
+		out = append(out, l.Object)
+	}
+	return out, nil
+}
+
+// LocatedDump — дамп и бакеты, где он залит полностью (в порядке Clients).
+type LocatedDump struct {
+	Object
+	ReadyIn []*Client
+}
+
+// LocateDumps — как ListDumps, но с бакетами, где лежит готовая копия дампа.
+// Ready объекта — готов хотя бы в одном бакете.
+func (p *Pool) LocateDumps(ctx context.Context, prefix string) ([]LocatedDump, error) {
 	clients, _ := p.Clients(ctx)
 	if len(clients) == 0 {
 		return nil, ErrNoBuckets
 	}
-	byKey := map[string]Object{}
+	byKey := map[string]*LocatedDump{}
+	var order []string
 	var errs []error
 	for _, c := range clients {
 		objs, err := c.ListDumps(ctx, prefix)
@@ -120,8 +141,17 @@ func (p *Pool) ListDumps(ctx context.Context, prefix string) ([]Object, error) {
 			continue
 		}
 		for _, o := range objs {
-			if cur, ok := byKey[o.Key]; !ok || o.LastModified.After(cur.LastModified) {
-				byKey[o.Key] = o
+			cur, ok := byKey[o.Key]
+			if !ok {
+				cur = &LocatedDump{Object: o}
+				byKey[o.Key] = cur
+				order = append(order, o.Key)
+			} else if o.LastModified.After(cur.LastModified) {
+				cur.Size, cur.LastModified = o.Size, o.LastModified
+			}
+			if o.Ready {
+				cur.Ready = true
+				cur.ReadyIn = append(cur.ReadyIn, c)
 			}
 		}
 	}
@@ -131,9 +161,9 @@ func (p *Pool) ListDumps(ctx context.Context, prefix string) ([]Object, error) {
 	for _, err := range errs {
 		log.Printf("storage: list %s: %v", prefix, err)
 	}
-	out := make([]Object, 0, len(byKey))
-	for _, o := range byKey {
-		out = append(out, o)
+	out := make([]LocatedDump, 0, len(order))
+	for _, k := range order {
+		out = append(out, *byKey[k])
 	}
 	return out, nil
 }

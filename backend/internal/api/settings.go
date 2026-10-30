@@ -31,6 +31,13 @@ const (
 	maxRetentionDays = 3650
 )
 
+// Границы срока жизни ссылки на скачивание дампа (минуты) — как CHECK в
+// миграции 025. Потолок — 7 дней, больше presigned-ссылка SigV4 не живёт.
+const (
+	minDownloadURLTTLMinutes = 1
+	maxDownloadURLTTLMinutes = 7 * 24 * 60
+)
+
 // settingsResponse — настройки плюс то, что действует при пустых полях: значения
 // из values чарта (job.*, JOB_POD_OVERRIDES). UI показывает их подсказками.
 type settingsResponse struct {
@@ -86,6 +93,8 @@ type settingsRequest struct {
 	// 0 / не передан → текущее значение не меняется (старые клиенты).
 	AuditRetentionDays int32 `json:"audit_retention_days"`
 	RunsRetentionDays  int32 `json:"runs_retention_days"`
+	// 0 / не передан → текущее значение не меняется (старые клиенты).
+	DownloadURLTTLMinutes int32 `json:"download_url_ttl_minutes"`
 }
 
 // putSettings — админка: дефолты типа/размера временного хранилища, ресурсов и TTL Job'ов.
@@ -177,6 +186,15 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	downloadTTL := req.DownloadURLTTLMinutes
+	if downloadTTL == 0 {
+		downloadTTL = cur.DownloadURLTTLMinutes
+	}
+	if downloadTTL < minDownloadURLTTLMinutes || downloadTTL > maxDownloadURLTTLMinutes {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf(
+			"download_url_ttl_minutes must be between %d and %d", minDownloadURLTTLMinutes, maxDownloadURLTTLMinutes))
+		return
+	}
 	if podStart < minPodStartTimeoutMinutes || podStart > maxPodStartTimeoutMinutes {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf(
 			"job_pod_start_timeout_minutes must be between %d and %d", minPodStartTimeoutMinutes, maxPodStartTimeoutMinutes))
@@ -194,6 +212,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		NotifyOnSuccess:           onSuccess,
 		AuditRetentionDays:        auditDays,
 		RunsRetentionDays:         runsDays,
+		DownloadURLTTLMinutes:     downloadTTL,
 	}, id)
 	if err != nil {
 		writeStoreError(w, err)

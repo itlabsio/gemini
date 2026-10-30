@@ -1,6 +1,13 @@
 package storage
 
-import "testing"
+import (
+	"context"
+	"net/url"
+	"testing"
+	"time"
+
+	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
+)
 
 func TestLabels(t *testing.T) {
 	b := JobBucket{ID: BuiltInID, Name: "helm", Endpoint: "storage.yandexcloud.net/", Bucket: "dumps"}
@@ -35,5 +42,31 @@ func TestParseExtensions(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("ParseExtensions = %v, want %v", got, want)
 		}
+	}
+}
+
+func TestPresignGet(t *testing.T) {
+	c, err := New(model.S3Bucket{ID: "b1", Endpoint: "s3.example", Region: "ru-central1", Bucket: "dumps",
+		AccessKeyID: "k", SecretAccessKey: "s", PathStyle: true, UseSSL: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := c.PresignGet(context.Background(), "pg/orders/x.dump", "pg_orders_x.dump", 15*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Scheme != "https" || u.Host != "s3.example" || u.Path != "/dumps/pg/orders/x.dump" {
+		t.Errorf("presigned url = %s", raw)
+	}
+	q := u.Query()
+	if got := q.Get("response-content-disposition"); got != `attachment; filename="pg_orders_x.dump"` {
+		t.Errorf("content-disposition = %q", got)
+	}
+	if q.Get("X-Amz-Expires") != "900" || q.Get("X-Amz-Signature") == "" {
+		t.Errorf("signature params = %v", q)
 	}
 }

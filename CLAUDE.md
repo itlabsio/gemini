@@ -23,6 +23,7 @@
 | Pod/Job: ресурсы, storage, overrides, таймауты | `k8s/podspec.go`, `k8s/podoverrides.go`, `k8s/jobs.go`; параметры из настроек — `operator.go:jobParams` |
 | Секреты кред в k8s | `k8s/secrets.go`, `operator.go` (`resolveCreds`, `upsertInstanceCreds`, `upsertDatabaseCreds`), Vault — `vault/vault.go` |
 | S3: несколько бакетов, fan-out | `storage/pool.go`, `storage/storage.go`, `api/s3buckets.go`, `store/s3buckets.go` |
+| Скачивание дампов (presigned, admin проекта, только source) | `api/dumps.go` (`listDumps`, `downloadDump`, `validDumpKey`), `storage/pool.go:LocateDumps`, `Client.PresignGet`; флаги `downloadable` у инстанса (меняет только superuser) и у бакета, TTL — `download_url_ttl_minutes` |
 | Discovery баз и ролей | `discovery/discovery.go`, `api/instances.go` (`discoverInstance`, `listInstanceRoles`) |
 | Аутентификация/RBAC (client-роли superuser/security + роль в проекте из `groups`) | `auth/auth.go` (`clientRoles`, `Identity.Can`, `parseGroups`), `api/rbac.go` (`authorizeInstance/Database`, проекты), `api/me.go` |
 | Шифрование секретов в БД метаданных | `secretcrypto/secretcrypto.go` (`SECRET_ENCRYPTION_KEY`) |
@@ -51,7 +52,7 @@
 `Instance` (сервер PostgreSQL) → `Database` (бэкапится/нет, cron) → `BackupRun` (kind dump|restore, trigger,
 `event_key` для идемпотентности). Target: `DatabaseMapping` (source external_id ↔ локальная `Database`,
 `s3_prefix`, `target_owner`). `HeadPairing`/`PairingSecret` — связь source↔target. `S3Bucket`, `Settings`, `Project` (RBAC; `instances.project`).
-Миграции пронумерованы `001…024`; следующая — `025_*.sql`.
+Миграции пронумерованы `001…025`; следующая — `026_*.sql`.
 
 ### Потоки
 - **Backup (source):** CronJob/ручной запуск → `StartDump` → Job → `runDump` → S3 (`.dump`, `.sha256`, extensions)
