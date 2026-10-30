@@ -184,6 +184,10 @@ export default async function InstanceDetailPage({ params }: Props) {
         restoreMode={instance.restore_mode}
         canEdit={can(me, instance.project, "admin")}
         canRun={can(me, instance.project, "operator")}
+        canDownload={
+          me.head_role === "source" && instance.downloadable && can(me, instance.project, "admin")
+        }
+        pgVersion={fmtPgVersion(instance.server_version_num)}
       />
     </div>
   );

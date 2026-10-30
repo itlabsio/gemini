@@ -29,6 +29,7 @@ export async function updateSettingsAction(p: {
   notify_on_success: boolean;
   audit_retention_days: number;
   runs_retention_days: number;
+  download_url_ttl_minutes: number;
 }): Promise<Result> {
   try {
     await updateSettings(p);

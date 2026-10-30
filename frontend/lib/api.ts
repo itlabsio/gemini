@@ -6,6 +6,8 @@ import type {
   Candidate,
   Database,
   DatabaseMapping,
+  Dump,
+  DumpDownload,
   HeadPairing,
   HeadRole,
   Instance,
@@ -134,6 +136,8 @@ export interface InstancePayload {
   role?: string;
   /** Только superuser; не передан — не менять. */
   project?: string;
+  /** Скачивание дампов. Только superuser; не передан — не менять. */
+  downloadable?: boolean;
   name: string;
   host: string;
   port: number;
@@ -203,6 +207,7 @@ export const updateSettings = (p: {
   notify_on_success: boolean;
   audit_retention_days: number;
   runs_retention_days: number;
+  download_url_ttl_minutes: number;
 }) => apiFetch<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(p) });
 
 export const listS3Buckets = () => apiFetch<S3Bucket[]>("/api/s3-buckets");
@@ -217,6 +222,7 @@ export interface S3BucketPayload {
   path_style: boolean;
   use_ssl: boolean;
   enabled: boolean;
+  downloadable: boolean;
 }
 export const createS3Bucket = (p: S3BucketPayload) =>
   apiFetch<S3Bucket>("/api/s3-buckets", { method: "POST", body: JSON.stringify(p) });
@@ -229,6 +235,16 @@ export const testS3Bucket = (id: string) =>
 
 export const runDatabase = (id: string) =>
   apiFetch<BackupRun>(`/api/databases/${id}/run`, { method: "POST" });
+
+/** Готовые дампы базы в S3, свежие первыми (source, admin проекта). */
+export const listDumps = (databaseId: string) =>
+  apiFetch<Dump[]>(`/api/databases/${databaseId}/dumps`);
+/** Presigned-ссылка на дамп в выбранном бакете; выдача пишется в аудит. */
+export const downloadDump = (databaseId: string, key: string, bucketId: string) =>
+  apiFetch<DumpDownload>(`/api/databases/${databaseId}/dumps/download`, {
+    method: "POST",
+    body: JSON.stringify({ key, bucket_id: bucketId }),
+  });
 
 export const issuePairingCode = () =>
   apiFetch<{ code: string; expires_in_seconds: number }>("/api/pairing/issue-code", {

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import type { Settings } from "@/lib/types";
+import type { HeadRole, Settings } from "@/lib/types";
 import { updateSettingsAction } from "@/app/settings/actions";
 import { bytesQuantityError, MIN_STORAGE_SIZE } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,10 @@ const POD_START_MAX = 24 * 60;
 const RETENTION_MIN = 14;
 const RETENTION_MAX = 3650;
 
+// Срок жизни ссылки на скачивание дампа, минуты — как CHECK в миграции 025 (потолок SigV4).
+const DOWNLOAD_TTL_MIN = 1;
+const DOWNLOAD_TTL_MAX = 7 * 24 * 60;
+
 /** Целое число в [min, max] или текст ошибки (unit — «минут», «дней»). */
 function intError(v: string, min: number, max: number, unit = "минут"): string | null {
   const n = Number(v.trim());
@@ -45,7 +49,7 @@ function intError(v: string, min: number, max: number, unit = "минут"): str
   return null;
 }
 
-export function SettingsForm({ initial }: { initial: Settings }) {
+export function SettingsForm({ initial, headRole }: { initial: Settings; headRole: HeadRole }) {
   const [pending, start] = useTransition();
 
   const [type, setType] = useState(initial.default_storage_type);
@@ -79,6 +83,7 @@ export function SettingsForm({ initial }: { initial: Settings }) {
   const [onSuccess, setOnSuccess] = useState(initial.notify_on_success);
   const [auditDays, setAuditDays] = useState(String(initial.audit_retention_days));
   const [runsDays, setRunsDays] = useState(String(initial.runs_retention_days));
+  const [downloadTtl, setDownloadTtl] = useState(String(initial.download_url_ttl_minutes));
 
   const sizeErr = size.trim()
     ? bytesQuantityError(size, { min: MIN_STORAGE_SIZE })
@@ -89,8 +94,10 @@ export function SettingsForm({ initial }: { initial: Settings }) {
   const podStartErr = intError(podStart, POD_START_MIN, POD_START_MAX);
   const auditDaysErr = intError(auditDays, RETENTION_MIN, RETENTION_MAX, "дней");
   const runsDaysErr = intError(runsDays, RETENTION_MIN, RETENTION_MAX, "дней");
+  const downloadTtlErr = intError(downloadTtl, DOWNLOAD_TTL_MIN, DOWNLOAD_TTL_MAX);
   const invalid = Boolean(
-    sizeErr || reqMemErr || limMemErr || ttlErr || podStartErr || auditDaysErr || runsDaysErr,
+    sizeErr || reqMemErr || limMemErr || ttlErr || podStartErr || auditDaysErr || runsDaysErr ||
+      downloadTtlErr,
   );
 
   const dirty =
@@ -106,7 +113,8 @@ export function SettingsForm({ initial }: { initial: Settings }) {
     onFailure !== initial.notify_on_failure ||
     onSuccess !== initial.notify_on_success ||
     auditDays.trim() !== String(initial.audit_retention_days) ||
-    runsDays.trim() !== String(initial.runs_retention_days);
+    runsDays.trim() !== String(initial.runs_retention_days) ||
+    downloadTtl.trim() !== String(initial.download_url_ttl_minutes);
 
   function save() {
     let scheduling: Record<string, unknown> | null = null;
@@ -136,6 +144,7 @@ export function SettingsForm({ initial }: { initial: Settings }) {
         notify_on_success: onSuccess,
         audit_retention_days: Number(auditDays.trim()),
         runs_retention_days: Number(runsDays.trim()),
+        download_url_ttl_minutes: Number(downloadTtl.trim()),
       });
       if (res.ok) toast.success("Сохранено");
       else toast.error(res.error);
@@ -390,6 +399,39 @@ export function SettingsForm({ initial }: { initial: Settings }) {
           </Field>
         </CardContent>
       </Card>
+
+      {headRole === "source" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Скачивание дампов</CardTitle>
+            <CardDescription>
+              Сколько живёт ссылка на скачивание дампа. Отозвать выданную ссылку
+              нельзя — до истечения срока по ней скачает любой, у кого она есть
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex gap-4">
+            <Field
+              label="Срок жизни ссылки, минут"
+              htmlFor="download_url_ttl_minutes"
+              error={downloadTtlErr}
+              className="flex-1"
+            >
+              <Input
+                id="download_url_ttl_minutes"
+                aria-invalid={Boolean(downloadTtlErr)}
+                type="number"
+                inputMode="numeric"
+                min={DOWNLOAD_TTL_MIN}
+                max={DOWNLOAD_TTL_MAX}
+                step={1}
+                value={downloadTtl}
+                onChange={(e) => setDownloadTtl(e.target.value)}
+                placeholder="15"
+              />
+            </Field>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex items-center gap-3">
         <Button onClick={save} disabled={pending || !dirty || invalid}>

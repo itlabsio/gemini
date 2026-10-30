@@ -8,7 +8,9 @@ import {
   deleteDatabase,
   deleteInstance,
   discoverInstance,
+  downloadDump,
   listActiveRuns,
+  listDumps,
   listInstanceRoles,
   patchDatabase,
   runDatabase,
@@ -17,7 +19,7 @@ import {
   vaultSecretKeys,
   type InstancePayload,
 } from "@/lib/api";
-import type { BackupRun } from "@/lib/types";
+import type { BackupRun, Dump, DumpDownload } from "@/lib/types";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -175,5 +177,31 @@ export async function runDatabaseAction(instanceId: string, databaseId: string):
     return { ok: true };
   } catch (e) {
     return toResult(e);
+  }
+}
+
+/** Готовые дампы базы в S3 — для диалога скачивания. */
+export async function listDumpsAction(
+  databaseId: string,
+): Promise<{ ok: true; dumps: Dump[] } | { ok: false; error: string }> {
+  try {
+    return { ok: true, dumps: await listDumps(databaseId) };
+  } catch (e) {
+    const r = toResult(e);
+    return { ok: false, error: r.ok ? "неизвестная ошибка" : r.error };
+  }
+}
+
+/** Presigned-ссылка на дамп в выбранном бакете. */
+export async function downloadDumpAction(
+  databaseId: string,
+  key: string,
+  bucketId: string,
+): Promise<{ ok: true; download: DumpDownload } | { ok: false; error: string }> {
+  try {
+    return { ok: true, download: await downloadDump(databaseId, key, bucketId) };
+  } catch (e) {
+    const r = toResult(e);
+    return { ok: false, error: r.ok ? "неизвестная ошибка" : r.error };
   }
 }

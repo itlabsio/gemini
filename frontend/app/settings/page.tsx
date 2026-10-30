@@ -24,8 +24,8 @@ export default async function SettingsPage() {
         Обновлено: <LocalDateTime value={settings.updated_at} />
         {settings.updated_by ? ` · ${settings.updated_by}` : ""}
       </p>
-      <SettingsForm initial={settings} />
-      <S3BucketsManager buckets={buckets} />
+      <SettingsForm initial={settings} headRole={me.head_role} />
+      <S3BucketsManager buckets={buckets} headRole={me.head_role} />
     </div>
   );
 }

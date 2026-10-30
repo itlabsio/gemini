@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Pencil, PlugZap, Plus, Trash2 } from "lucide-react";
-import type { S3Bucket } from "@/lib/types";
+import type { HeadRole, S3Bucket } from "@/lib/types";
 import type { S3BucketPayload } from "@/lib/api";
 import {
   deleteS3BucketAction,
@@ -60,6 +60,7 @@ const EMPTY: S3BucketPayload = {
   path_style: true,
   use_ssl: true,
   enabled: true,
+  downloadable: true,
 };
 
 function payloadOf(b: S3Bucket): S3BucketPayload {
@@ -73,10 +74,13 @@ function payloadOf(b: S3Bucket): S3BucketPayload {
     path_style: b.path_style,
     use_ssl: b.use_ssl,
     enabled: b.enabled,
+    downloadable: b.downloadable,
   };
 }
 
-export function S3BucketsManager({ buckets }: { buckets: S3Bucket[] }) {
+export function S3BucketsManager({ buckets, headRole }: { buckets: S3Bucket[]; headRole: HeadRole }) {
+  // Скачивание дампов есть только на source.
+  const source = headRole === "source";
   const [pending, start] = useTransition();
   // editing: null — диалог закрыт; id "" — новый бакет
   const [editing, setEditing] = useState<{ id: string; form: S3BucketPayload } | null>(null);
@@ -158,11 +162,18 @@ export function S3BucketsManager({ buckets }: { buckets: S3Bucket[] }) {
                     {b.endpoint}/{b.bucket}
                   </TableCell>
                   <TableCell>
-                    {b.enabled ? (
-                      <Badge variant="outline">включён</Badge>
-                    ) : (
-                      <Badge variant="secondary">выключен</Badge>
-                    )}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {b.enabled ? (
+                        <Badge variant="outline">включён</Badge>
+                      ) : (
+                        <Badge variant="secondary">выключен</Badge>
+                      )}
+                      {source && b.downloadable && (
+                        <Badge variant="outline" title="Админы проектов могут скачивать дампы из этого бакета">
+                          скачивание
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right whitespace-nowrap">
                     <Button
@@ -274,6 +285,7 @@ export function S3BucketsManager({ buckets }: { buckets: S3Bucket[] }) {
                     ["use_ssl", "HTTPS"],
                     ["path_style", "Path-style"],
                     ["enabled", "Включён"],
+                    ...(source ? ([["downloadable", "Скачивание дампов"]] as const) : []),
                   ] as const
                 ).map(([k, label]) => (
                   <div key={k} className="flex items-center gap-2">

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { createInstanceAction, updateInstanceAction } from "@/app/instances/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
@@ -57,6 +58,7 @@ export function InstanceForm({
   const [error, setError] = useState<string | null>(null);
 
   const [project, setProject] = useState(initial?.project ?? "");
+  const [downloadable, setDownloadable] = useState(initial?.downloadable ?? false);
   const [sslMode, setSslMode] = useState(initial?.ssl_mode ?? "verify-full");
   const verifyMode = sslMode === "verify-ca" || sslMode === "verify-full";
   // Кастомный CA нужен только self-hosted инстансам со своим сертификатом; для
@@ -85,6 +87,8 @@ export function InstanceForm({
     setError(null);
     const payload = {
       project: projects ? project : undefined,
+      // Скачивание дампов, как и проект, меняет только superuser.
+      downloadable: projects && headRole === "source" ? downloadable : undefined,
       name: String(fd.get("name") ?? ""),
       host: String(fd.get("host") ?? ""),
       port: Number(fd.get("port") ?? 5432),
@@ -168,6 +172,26 @@ export function InstanceForm({
                     ))}
                   </SelectContent>
                 </Select>
+              </Field>
+            )}
+
+            {headRole === "source" && (
+              <Field
+                label="Скачивание дампов"
+                htmlFor="downloadable"
+                hint="Админы проекта смогут скачивать дампы баз этого инстанса по временной ссылке. Меняет только superuser"
+              >
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="downloadable"
+                    checked={downloadable}
+                    onCheckedChange={setDownloadable}
+                    disabled={!projects}
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    {downloadable ? "разрешено" : "запрещено"}
+                  </span>
+                </div>
               </Field>
             )}
 

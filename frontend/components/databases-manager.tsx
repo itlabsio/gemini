@@ -23,6 +23,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { RunningStopButton } from "@/components/running-stop-button";
 import { DeleteDatabaseButton } from "@/components/delete-database-button";
 import { RunHistoryStrip } from "@/components/run-history-strip";
+import { DumpsButton } from "@/components/dumps-dialog";
 import {
   bytesQuantityError,
   cn,
@@ -67,6 +68,10 @@ interface Props {
   restoreMode?: RestoreMode;
   canEdit: boolean;
   canRun: boolean;
+  /** Скачивание дампов: source, admin проекта и флаг инстанса. */
+  canDownload?: boolean;
+  /** Версия PostgreSQL инстанса («17.4») — подсказка к скачанному дампу. */
+  pgVersion?: string | null;
 }
 
 /** Роли с LOGIN для выбора пользователя restore: null — ещё грузятся. */
@@ -116,6 +121,8 @@ export function DatabasesManager({
   restoreMode,
   canEdit,
   canRun,
+  canDownload = false,
+  pgVersion,
 }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -251,6 +258,8 @@ export function DatabasesManager({
       loginRoles={loginRoles}
       canEdit={canEdit}
       canRun={canRun}
+      canDownload={canDownload}
+      pgVersion={pgVersion}
       disabled={pending}
       activeRun={activeByDb.get(db.id)}
       recentRuns={recentByDb.get(db.id) ?? NO_RUNS}
@@ -344,6 +353,8 @@ function Row({
   loginRoles,
   canEdit,
   canRun,
+  canDownload,
+  pgVersion,
   disabled,
   activeRun,
   recentRuns,
@@ -359,6 +370,8 @@ function Row({
   loginRoles: LoginRoles;
   canEdit: boolean;
   canRun: boolean;
+  canDownload: boolean;
+  pgVersion?: string | null;
   disabled: boolean;
   activeRun?: BackupRun;
   recentRuns: BackupRun[];
@@ -567,6 +580,7 @@ function Row({
             </TooltipTrigger>
             <TooltipContent>Журнал запусков</TooltipContent>
           </Tooltip>
+          {canDownload && <DumpsButton databaseId={db.id} dbName={db.db_name} pgVersion={pgVersion} />}
         </div>
       </TableCell>
 

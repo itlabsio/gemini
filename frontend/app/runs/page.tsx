@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { X } from "lucide-react";
-import { listRuns } from "@/lib/api";
-import type { BackupRun } from "@/lib/types";
+import { getMe, listDatabases, listInstances, listRuns } from "@/lib/api";
+import type { BackupRun, Me } from "@/lib/types";
+import { can } from "@/lib/rbac";
+import { fmtPgVersion } from "@/lib/utils";
 import { LocalDateTime } from "@/components/local-date-time";
+import { DumpsButton } from "@/components/dumps-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +23,31 @@ import {
 
 export const metadata: Metadata = { title: "Журнал" };
 
+type DownloadableDb = { dbName: string; pgVersion: string | null };
+
+/**
+ * Базы, дампы которых пользователь может скачать (source, флаг инстанса, admin
+ * проекта). Ошибка загрузки — просто без кнопок скачивания.
+ */
+async function downloadableDbs(me: Me): Promise<Map<string, DownloadableDb>> {
+  const out = new Map<string, DownloadableDb>();
+  if (me.head_role !== "source") return out;
+  try {
+    const instances = (await listInstances()).filter(
+      (i) => i.downloadable && can(me, i.project, "admin"),
+    );
+    const lists = await Promise.all(instances.map((i) => listDatabases(i.id)));
+    instances.forEach((inst, idx) => {
+      for (const db of lists[idx]) {
+        out.set(db.id, { dbName: db.db_name, pgVersion: fmtPgVersion(inst.server_version_num) });
+      }
+    });
+  } catch {
+    // кнопки скачивания не критичны для журнала
+  }
+  return out;
+}
+
 export default async function RunsPage({
   searchParams,
 }: {
@@ -33,8 +61,11 @@ export default async function RunsPage({
 
   let runs: BackupRun[] = [];
   let error: string | null = null;
+  let dumpDbs = new Map<string, DownloadableDb>();
   try {
-    runs = await listRuns(qs.toString() ? `?${qs}` : "");
+    const [list, me] = await Promise.all([listRuns(qs.toString() ? `?${qs}` : ""), getMe()]);
+    runs = list;
+    dumpDbs = await downloadableDbs(me);
   } catch (e) {
     error = e instanceof Error ? e.message : "Ошибка загрузки";
   }
@@ -91,8 +122,19 @@ export default async function RunsPage({
                 <TableCell className="whitespace-nowrap text-muted-foreground">
                   <LocalDateTime value={r.finished_at} />
                 </TableCell>
-                <TableCell className="max-w-xs truncate font-mono text-xs">
-                  {r.s3_object_key || "—"}
+                <TableCell className="max-w-xs font-mono text-xs">
+                  <div className="flex items-center gap-1">
+                    <span className="truncate">{r.s3_object_key || "—"}</span>
+                    {r.kind === "dump" && r.status === "succeeded" && r.s3_object_key &&
+                      dumpDbs.has(r.database_id) && (
+                        <DumpsButton
+                          databaseId={r.database_id}
+                          dbName={dumpDbs.get(r.database_id)!.dbName}
+                          pgVersion={dumpDbs.get(r.database_id)!.pgVersion}
+                          focusKey={r.s3_object_key}
+                        />
+                      )}
+                  </div>
                 </TableCell>
                 <TableCell>
                   {r.peer_statuses && r.peer_statuses.length > 0 ? (

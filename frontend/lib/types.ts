@@ -11,6 +11,8 @@ export interface Instance {
   project: string;
   /** "terraform" — создан/изменён terraform-provider-gemini. */
   managed_by: string;
+  /** Админы проекта могут скачивать дампы баз (только source); меняет superuser. */
+  downloadable: boolean;
   name: string;
   host: string;
   port: number;
@@ -78,6 +80,8 @@ export interface Settings {
   audit_retention_days: number;
   /** Сколько дней хранить историю прогонов (активные и последний по базе — всегда) */
   runs_retention_days: number;
+  /** Срок жизни ссылки на скачивание дампа, минуты */
+  download_url_ttl_minutes: number;
   updated_at: string;
   updated_by: string;
 }
@@ -93,6 +97,8 @@ export interface S3Bucket {
   path_style: boolean;
   use_ssl: boolean;
   enabled: boolean;
+  /** Из бакета можно выдавать ссылки на скачивание дампов */
+  downloadable: boolean;
   /** Бакет из Helm values (s3.*) — только для чтения */
   built_in: boolean;
   created_by: string;
@@ -119,6 +125,24 @@ export interface BackupRun {
   /** Исход restore этого дампа по каждому Target-контуру (только на Source). */
   peer_statuses?: RunPeerStatus[];
   created_at: string;
+}
+
+/** Готовый дамп базы в S3 (только source). */
+export interface Dump {
+  key: string;
+  size: number;
+  last_modified: string;
+  /** Бакеты с готовой копией, из которых разрешено скачивание; пусто — нельзя. */
+  buckets: { id: string; name: string }[];
+}
+
+/** Ссылка на скачивание дампа и то, что нужно для ручного pg_restore. */
+export interface DumpDownload {
+  url: string;
+  expires_at: string;
+  filename: string;
+  sha256: string;
+  extensions: string[];
 }
 
 export interface RunPeerStatus {

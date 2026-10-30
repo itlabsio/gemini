@@ -26,6 +26,7 @@ export const AUDIT_ACTIONS: Record<string, { label: string; kind: AuditKind }> =
   "database.delete": { label: "Удаление базы", kind: "delete" },
   "database.run.dump": { label: "Ручной dump", kind: "run" },
   "database.run.restore": { label: "Ручной restore", kind: "run" },
+  "database.dump.download": { label: "Скачивание дампа", kind: "access" },
   "run.cancel": { label: "Отмена прогона", kind: "run" },
   "mapping.save": { label: "Сохранение сопоставления", kind: "update" },
   "mapping.delete": { label: "Удаление сопоставления", kind: "delete" },
