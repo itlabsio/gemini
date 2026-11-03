@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/config"
 )
@@ -107,8 +108,17 @@ func Sanitize(s string) string {
 	for _, re := range credPatterns {
 		s = re.ReplaceAllString(s, "[redacted]")
 	}
-	if len(s) > 1500 {
-		s = s[:1500] + "…"
+	if len(s) > maxErrorLen {
+		// Режем по границе руны: ошибки PostgreSQL часто на русском, и срез
+		// посреди символа дал бы невалидный UTF-8 в сообщении и в БД.
+		n := maxErrorLen
+		for n > 0 && !utf8.RuneStart(s[n]) {
+			n--
+		}
+		s = s[:n] + "…"
 	}
 	return s
 }
+
+// maxErrorLen — предел длины текста ошибки после Sanitize (в байтах).
+const maxErrorLen = 1500
