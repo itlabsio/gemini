@@ -33,7 +33,7 @@
 | Уведомления (провалы/успехи) | `notify/notify.go`, фильтр по настройкам — `operator.go` `notifyFailure`/`notifySuccess` |
 | Настройки (TTL, таймауты, scheduling, сроки хранения) | `api/settings.go`, `store/settings.go`, миграции 004/006/015/016/022/023 |
 | Helm | `helm/gemini/{values.yaml,templates/}`, описание values — `helm/gemini/README.md`, примеры `helm/examples/` |
-| CI/релиз | `.github/workflows/release.yml` (тег `vX.Y.Z`) |
+| CI/релиз | тесты и линт — `.github/workflows/ci.yml` (push в main; из release.yml гейтит сборку), релиз — `.github/workflows/release.yml` (тег `vX.Y.Z`) |
 
 ## Backend (`backend/`, Go)
 

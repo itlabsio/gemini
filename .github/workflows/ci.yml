@@ -1,0 +1,99 @@
+name: ci
+
+# Тесты и линт. Запускается на push в main (коммиты идут прямо туда) и
+# переиспользуется из release.yml (workflow_call) — там он гейтит сборку образов
+# в pull request и по тегу, поэтому своего pull_request-триггера здесь нет.
+#
+# Backend-проверки — только при изменениях в backend/, frontend — в frontend/
+# (job changes). all=true (тег, ручной запуск) — обе части безусловно.
+on:
+  push:
+    branches: [main]
+    paths: [backend/**, frontend/**, .github/workflows/ci.yml]
+  workflow_call:
+    inputs:
+      all:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      all:
+        type: boolean
+        default: true
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # список файлов PR paths-filter берёт через API
+    outputs:
+      backend: ${{ inputs.all || steps.filter.outputs.backend == 'true' }}
+      frontend: ${{ inputs.all || steps.filter.outputs.frontend == 'true' }}
+    steps:
+      - uses: actions/checkout@v7
+        if: ${{ !inputs.all }}
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: ${{ !inputs.all }}
+        with:
+          filters: |
+            backend:
+              - backend/**
+              - .github/workflows/ci.yml
+            frontend:
+              - frontend/**
+              - .github/workflows/ci.yml
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "не отформатировано gofmt:"; echo "$out"; exit 1; fi
+
+      - run: go vet ./...
+
+      - run: go test -race ./...
+
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      # Версия — та же, что в frontend/Dockerfile.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run lint
+
+      - run: bunx tsc --noEmit
