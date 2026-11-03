@@ -8,13 +8,14 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-// PodOverrides — планирование и ресурсы dump/restore-подов, приходят из values
-// Helm-чарта через env JOB_POD_OVERRIDES (JSON). Применяются и к Job, и к CronJob.
+// PodOverrides — планирование, ресурсы и hostAliases dump/restore-подов, приходят
+// из values Helm-чарта через env JOB_POD_OVERRIDES (JSON). Применяются и к Job, и к CronJob.
 type PodOverrides struct {
 	NodeSelector map[string]string            `json:"nodeSelector,omitempty"`
 	Tolerations  []corev1.Toleration          `json:"tolerations,omitempty"`
 	Affinity     *corev1.Affinity             `json:"affinity,omitempty"`
 	Resources    *corev1.ResourceRequirements `json:"resources,omitempty"`
+	HostAliases  []corev1.HostAlias           `json:"hostAliases,omitempty"`
 }
 
 // ParsePodOverrides разбирает JSON (пустая строка → нулевые overrides).
@@ -30,7 +31,7 @@ func ParsePodOverrides(s string) (PodOverrides, error) {
 }
 
 // MergeScheduling накладывает nodeSelector/tolerations/affinity из other
-// (непустые значения перекрывают). Resources не трогает.
+// (непустые значения перекрывают). Resources и HostAliases не трогает.
 func (o PodOverrides) MergeScheduling(other PodOverrides) PodOverrides {
 	if len(other.NodeSelector) > 0 {
 		o.NodeSelector = other.NodeSelector
@@ -44,7 +45,7 @@ func (o PodOverrides) MergeScheduling(other PodOverrides) PodOverrides {
 	return o
 }
 
-// applyToPod проставляет nodeSelector/tolerations/affinity в PodSpec.
+// applyToPod проставляет nodeSelector/tolerations/affinity/hostAliases в PodSpec.
 func (o PodOverrides) applyToPod(spec *corev1.PodSpec) {
 	if len(o.NodeSelector) > 0 {
 		spec.NodeSelector = o.NodeSelector
@@ -54,6 +55,9 @@ func (o PodOverrides) applyToPod(spec *corev1.PodSpec) {
 	}
 	if o.Affinity != nil {
 		spec.Affinity = o.Affinity
+	}
+	if len(o.HostAliases) > 0 {
+		spec.HostAliases = o.HostAliases
 	}
 }
 

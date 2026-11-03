@@ -51,3 +51,16 @@ func TestValidateResources(t *testing.T) {
 		t.Fatal("requests above limits must be rejected")
 	}
 }
+
+func TestHostAliasesAppliedToPod(t *testing.T) {
+	o, err := ParsePodOverrides(`{"hostAliases":[{"ip":"10.0.0.10","hostnames":["s3.local"]}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o = o.MergeScheduling(PodOverrides{NodeSelector: map[string]string{"a": "b"}})
+	var spec corev1.PodSpec
+	o.applyToPod(&spec)
+	if len(spec.HostAliases) != 1 || spec.HostAliases[0].IP != "10.0.0.10" || spec.HostAliases[0].Hostnames[0] != "s3.local" {
+		t.Fatalf("hostAliases = %+v", spec.HostAliases)
+	}
+}

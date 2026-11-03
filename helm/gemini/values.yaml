@@ -25,6 +25,10 @@ image:
 # -- Секреты для доступа к приватному registry (imagePullSecrets пода)
 imagePullSecrets: []
 
+# -- hostAliases (записи /etc/hosts) подов backend, frontend, migrate-Job и
+#    dump/restore-подов (Job и CronJob). Пример: [{ip: 10.0.0.10, hostnames: [s3.local]}]
+hostAliases: []
+
 # -- Внешний URL этого инстанса (нужен спаренным инстансам Gemini для webhook'ов).
 #    Пусто и включён ingress с host -> выводится автоматически: https://host (tls) | http://host.
 #    Задавать вручную только если ingress выключен или пиру нужен другой хостнейм.

@@ -28,6 +28,10 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         {{- toYaml .Values.backend.podSecurityContext | nindent 8 }}
       # Миграции накатывает отдельный Job (templates/backend/migrate-job.yaml,

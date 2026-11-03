@@ -49,7 +49,7 @@ type CronSpec struct {
 	StorageClass string
 	WorkDirSize  string
 
-	// Overrides — nodeSelector / tolerations / affinity / resources подов.
+	// Overrides — nodeSelector / tolerations / affinity / resources / hostAliases подов.
 	Overrides PodOverrides
 
 	// TTLSecondsAfterFinished — spec.ttlSecondsAfterFinished Job'ов; 0 → defaultJobTTLSeconds.

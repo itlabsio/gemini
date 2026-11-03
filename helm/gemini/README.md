@@ -24,6 +24,7 @@
 | image.frontend.tag | string | `""` | Тег. Пусто = appVersion чарта |
 | image.frontend.pullPolicy | string | `"IfNotPresent"` | Политика загрузки образа frontend |
 | imagePullSecrets | list | `[]` | Секреты для доступа к приватному registry (imagePullSecrets пода) |
+| hostAliases | list | `[]` | hostAliases (записи /etc/hosts) подов backend, frontend, migrate-Job и    dump/restore-подов (Job и CronJob). Пример: [{ip: 10.0.0.10, hostnames: [s3.local]}] |
 | publicUrl | string | `""` | Внешний URL этого инстанса (нужен спаренным инстансам Gemini для webhook'ов).    Пусто и включён ingress с host -> выводится автоматически: https://host (tls) | http://host.    Задавать вручную только если ingress выключен или пиру нужен другой хостнейм. |
 | backend.replicas | int | `1` | Число реплик backend. API обслуживают все, фоновые циклы (watcher, CronJob-шаблоны,    poller, до-подпись) — только лидер по Lease <fullname>-backend-leader |
 | backend.revisionHistoryLimit | int | `1` | Сколько старых ReplicaSet'ов хранить для отката |

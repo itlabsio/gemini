@@ -83,7 +83,8 @@ PUBLIC_URL backend'а: явный values.publicUrl, иначе выводитс�
 {{- end -}}
 
 {{/*
-JSON с nodeSelector / tolerations / affinity / resources для dump/restore-подов.
+JSON с nodeSelector / tolerations / affinity / resources / hostAliases для dump/restore-подов.
+hostAliases — общий .Values.hostAliases (тот же, что у подов backend/frontend).
 Бэкенд читает его из env JOB_POD_OVERRIDES и применяет к Job и CronJob.
 */}}
 {{- define "gemini.job.podOverrides" -}}
@@ -92,5 +93,6 @@ JSON с nodeSelector / tolerations / affinity / resources для dump/restore-п
 {{- with .Values.job.tolerations }}{{- $_ := set $o "tolerations" . }}{{- end -}}
 {{- with .Values.job.affinity }}{{- $_ := set $o "affinity" . }}{{- end -}}
 {{- with .Values.job.resources }}{{- $_ := set $o "resources" . }}{{- end -}}
+{{- with .Values.hostAliases }}{{- $_ := set $o "hostAliases" . }}{{- end -}}
 {{- $o | toJson -}}
 {{- end -}}
