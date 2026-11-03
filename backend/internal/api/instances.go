@@ -74,10 +74,10 @@ type instanceRequest struct {
 	VaultPasswordKey string `json:"vault_password_key"`
 	// Базы, которые discovery игнорирует (сверх всегда пропускаемой postgres).
 	ExcludedDatabases []string `json:"excluded_databases"`
-	// Project — проект-владелец. Меняет только superuser; nil — не менять.
+	// Project — проект-владелец; nil — не менять.
 	Project *string `json:"project"`
-	// Downloadable — скачивание дампов админами проекта. Меняет только
-	// superuser; nil — не менять (при создании — выключено).
+	// Downloadable — скачивание дампов админами проекта; nil — не менять
+	// (при создании — выключено).
 	Downloadable *bool `json:"downloadable"`
 }
 
@@ -257,8 +257,9 @@ func (s *Server) createInstance(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	cur, ok := s.authorizeInstance(w, r, id, auth.RoleAdmin)
-	if !ok {
+	cur, err := s.d.Store.GetInstance(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
 		return
 	}
 	var req instanceRequest
@@ -276,26 +277,16 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Проект назначает/меняет только superuser: иначе admin проекта мог бы
-	// «передать» инстанс в чужой проект или забрать чужой.
 	if in.Project != nil && *in.Project != cur.Project {
-		if !identity(r).Superuser {
-			writeError(w, http.StatusForbidden, "only superuser can change the project of an instance")
-			return
-		}
 		if !s.projectExists(w, r, in.Project) {
 			return
 		}
 	} else {
 		in.Project = nil
 	}
-	// Скачивание дампов — доступ к прод-данным: решает superuser, не admin проекта.
+	// Скачивание дампов — доступ к прод-данным: смену флага пишем в аудит отдельно.
 	var detail map[string]any
 	if in.Downloadable != nil && *in.Downloadable != cur.Downloadable {
-		if !identity(r).Superuser {
-			writeError(w, http.StatusForbidden, "only superuser can change dump downloads of an instance")
-			return
-		}
 		detail = map[string]any{"downloadable": *in.Downloadable}
 	} else {
 		in.Downloadable = nil
@@ -324,8 +315,9 @@ func (s *Server) clearInstanceManagedBy(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	inst, ok := s.authorizeInstance(w, r, id, auth.RoleAdmin)
-	if !ok {
+	inst, err := s.d.Store.GetInstance(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
 		return
 	}
 	if err := s.d.Store.DeleteInstance(r.Context(), id); err != nil {

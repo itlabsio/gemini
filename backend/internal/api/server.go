@@ -72,15 +72,19 @@ func NewRouter(d Deps) http.Handler {
 	apiR.HandleFunc("/instances", auth.RequireAnyProject(auth.RoleViewer, s.listInstances)).Methods(http.MethodGet)
 	apiR.HandleFunc("/instances", auth.RequireSuperuser(s.createInstance)).Methods(http.MethodPost)
 	apiR.HandleFunc("/instances/{id}", auth.RequireAnyProject(auth.RoleViewer, s.getInstance)).Methods(http.MethodGet)
-	apiR.HandleFunc("/instances/{id}", auth.RequireAnyProject(auth.RoleAdmin, s.updateInstance)).Methods(http.MethodPut)
-	apiR.HandleFunc("/instances/{id}", auth.RequireAnyProject(auth.RoleAdmin, s.deleteInstance)).Methods(http.MethodDelete)
+	// Правка и удаление — только superuser, как и создание: адрес, креды (в т.ч.
+	// путь в Vault) и имя (= S3-префикс дампов) admin проекта менять не должен —
+	// иначе увёл бы сохранённый пароль на свой хост или прочитал чужой секрет.
+	apiR.HandleFunc("/instances/{id}", auth.RequireSuperuser(s.updateInstance)).Methods(http.MethodPut)
+	apiR.HandleFunc("/instances/{id}", auth.RequireSuperuser(s.deleteInstance)).Methods(http.MethodDelete)
 	apiR.HandleFunc("/instances/{id}/managed-by", auth.RequireSuperuser(s.clearInstanceManagedBy)).Methods(http.MethodDelete)
 	apiR.HandleFunc("/instances/{id}/discover", auth.RequireAnyProject(auth.RoleAdmin, s.discoverInstance)).Methods(http.MethodPost)
 	apiR.HandleFunc("/instances/{id}/databases", auth.RequireAnyProject(auth.RoleViewer, s.listDatabases)).Methods(http.MethodGet)
 	apiR.HandleFunc("/instances/{id}/runs/recent", auth.RequireAnyProject(auth.RoleViewer, s.listRecentRuns)).Methods(http.MethodGet)
 
 	// Имена полей секрета Vault для сопоставления в UI (значения не отдаются).
-	apiR.HandleFunc("/vault/secret-keys", auth.RequireAnyProject(auth.RoleAdmin, s.vaultSecretKeys)).Methods(http.MethodPost)
+	// Нужно только формам создания/правки инстанса — тоже superuser.
+	apiR.HandleFunc("/vault/secret-keys", auth.RequireSuperuser(s.vaultSecretKeys)).Methods(http.MethodPost)
 
 	apiR.HandleFunc("/databases/{id}", auth.RequireAnyProject(auth.RoleAdmin, s.patchDatabase)).Methods(http.MethodPatch)
 	apiR.HandleFunc("/databases/{id}", auth.RequireAnyProject(auth.RoleAdmin, s.deleteDatabase)).Methods(http.MethodDelete)

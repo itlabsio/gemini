@@ -88,7 +88,8 @@ export default async function InstanceDetailPage({ params }: Props) {
           </Badge>
           <ManagedBadge managedBy={instance.managed_by} />
         </div>
-        {can(me, instance.project, "admin") && (
+        {/* править и удалять инстанс может только superuser */}
+        {me.superuser && (
           <InstanceActions
             id={id}
             name={instance.name}
