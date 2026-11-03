@@ -53,6 +53,10 @@ func (s *Store) encSecret(secret string) (string, error) {
 // ключ пира и (зашифрованный) HMAC-секрет, гасит одноразовый код. Ревокается
 // только прежняя active-запись с ТЕМ ЖЕ peer_url (перепэринг того же Target);
 // другие Target'ы остаются — Source мультипировый.
+//
+// Условие status='pending' в UPDATE делает код одноразовым и при гонке: второй
+// параллельный exchange дождётся блокировки строки, не пройдёт WHERE и получит
+// ErrNotFound (вся транзакция, включая revoke, откатится).
 func (s *Store) ActivatePairing(ctx context.Context, id, peerURL, secret, peerPubKey string) (*model.HeadPairing, error) {
 	enc, err := s.encSecret(secret)
 	if err != nil {
@@ -73,7 +77,7 @@ func (s *Store) ActivatePairing(ctx context.Context, id, peerURL, secret, peerPu
 		UPDATE head_pairings
 		SET status = 'active', peer_url = $2, auth_secret_hash = $3, peer_public_key = $4,
 		    pairing_code_hash = '', code_expires_at = NULL, established_at = NOW()
-		WHERE id = $1
+		WHERE id = $1 AND status = 'pending' AND code_expires_at > NOW()
 		RETURNING `+pairingCols,
 		id, peerURL, enc, peerPubKey))
 	if err != nil {

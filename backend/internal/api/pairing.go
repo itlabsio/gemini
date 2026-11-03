@@ -199,6 +199,10 @@ func (s *Server) pairingExchange(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := s.d.Store.ActivatePairing(r.Context(), p.ID,
 		strings.TrimSuffix(req.PeerURL, "/"), req.Secret, req.PublicKey); err != nil {
+		if errors.Is(err, store.ErrNotFound) { // код уже погасил параллельный запрос
+			writeError(w, http.StatusUnauthorized, "invalid or expired pairing code")
+			return
+		}
 		writeStoreError(w, err)
 		return
 	}
