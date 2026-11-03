@@ -70,3 +70,22 @@ func TestPresignGet(t *testing.T) {
 		t.Errorf("signature params = %v", q)
 	}
 }
+
+func TestDirectChild(t *testing.T) {
+	cases := []struct {
+		key  string
+		want bool
+	}{
+		{"inst/db/20260101.dump", true},
+		{"inst/db/20260101.dump.sha256", true},
+		{"inst/db/sub/20260101.dump", false}, // дамп базы "db/sub"
+		{"inst/db/", false},
+		{"inst/dbx/20260101.dump", false},
+		{"other/db/20260101.dump", false},
+	}
+	for _, c := range cases {
+		if got := DirectChild("inst/db/", c.key); got != c.want {
+			t.Errorf("DirectChild(%q) = %v, want %v", c.key, got, c.want)
+		}
+	}
+}

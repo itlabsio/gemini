@@ -148,8 +148,17 @@ type Object struct {
 	Ready bool
 }
 
-// ListDumps возвращает объекты дампов под префиксом (без sidecar-файлов) с
-// признаком готовности — из того же листинга, без StatObject на каждый дамп.
+// DirectChild сообщает, что key лежит прямо под prefix (prefix оканчивается на
+// "/"), а не глубже. Имя базы PostgreSQL может содержать "/": без этой проверки
+// префикс базы "db" захватил бы дампы базы "db/sub" того же инстанса.
+func DirectChild(prefix, key string) bool {
+	rest, ok := strings.CutPrefix(key, prefix)
+	return ok && rest != "" && !strings.Contains(rest, "/")
+}
+
+// ListDumps возвращает объекты дампов прямо под префиксом (без sidecar-файлов и
+// без вложенных «подкаталогов», см. DirectChild) с признаком готовности — из
+// того же листинга, без StatObject на каждый дамп.
 func (c *Client) ListDumps(ctx context.Context, prefix string) ([]Object, error) {
 	var out []Object
 	sums := map[string]bool{}
@@ -159,6 +168,9 @@ func (c *Client) ListDumps(ctx context.Context, prefix string) ([]Object, error)
 	}) {
 		if info.Err != nil {
 			return nil, info.Err
+		}
+		if !DirectChild(prefix, info.Key) {
+			continue
 		}
 		if key, ok := strings.CutSuffix(info.Key, ChecksumSuffix); ok {
 			sums[key] = true

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/auth"
+	"gl.sdvor.com/devops/docker/gemini/backend/internal/storage"
 )
 
 var errVaultDisabled = errors.New("vault integration is disabled on this head")
@@ -42,7 +43,9 @@ func keyUnderPrefix(key, prefix string) bool {
 			return false
 		}
 	}
-	return strings.HasPrefix(key, prefix+"/")
+	// Только прямо под префиксом: имя базы может содержать "/", и префикс базы
+	// "db" иначе пропустил бы дамп базы "db/sub" того же инстанса.
+	return storage.DirectChild(prefix+"/", key)
 }
 
 // firstField возвращает первое слово строки (напр. hex из "<hex>  db.dump").
