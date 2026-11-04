@@ -60,6 +60,19 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # Живой Postgres для store-тестов: без TEST_PG_DSN они пропускаются.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: gemini
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gemini"
+          --health-interval 2s --health-timeout 5s --health-retries 15
+    env:
+      TEST_PG_DSN: postgres://postgres:test@localhost:5432/gemini?sslmode=disable
     steps:
       - uses: actions/checkout@v7
 
@@ -74,6 +87,15 @@ jobs:
           if [ -n "$out" ]; then echo "не отформатировано gofmt:"; echo "$out"; exit 1; fi
 
       - run: go vet ./...
+
+      # Схема для store-тестов — теми же миграциями, что и в проде (gemini migrate).
+      - name: migrate test db
+        env:
+          POSTGRES_URL: ${{ env.TEST_PG_DSN }}
+          OIDC_ISSUER_URL: http://ci.invalid
+          OIDC_CLIENT_ID: ci
+          SECRET_ENCRYPTION_KEY: "01234567890123456789012345678901"
+        run: go run ./cmd/gemini migrate
 
       - run: go test -race ./...
 
