@@ -12,14 +12,16 @@ import {
   listActiveRuns,
   listDumps,
   listInstanceRoles,
+  listRestoreCandidates,
   patchDatabase,
   runDatabase,
+  setInstanceRestorable,
   unmanageInstance,
   updateInstance,
   vaultSecretKeys,
   type InstancePayload,
 } from "@/lib/api";
-import type { BackupRun, Dump, DumpDownload } from "@/lib/types";
+import type { BackupRun, Dump, DumpDownload, RestoreCandidate } from "@/lib/types";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -170,9 +172,14 @@ export async function cancelRunAction(instanceId: string, runId: string): Promis
   }
 }
 
-export async function runDatabaseAction(instanceId: string, databaseId: string): Promise<Result> {
+/** Ручной запуск; на target s3ObjectKey — выбранный дамп (без него — самый свежий). */
+export async function runDatabaseAction(
+  instanceId: string,
+  databaseId: string,
+  s3ObjectKey?: string,
+): Promise<Result> {
   try {
-    await runDatabase(databaseId);
+    await runDatabase(databaseId, s3ObjectKey);
     revalidatePath(`/instances/${instanceId}`);
     return { ok: true };
   } catch (e) {
@@ -203,5 +210,29 @@ export async function downloadDumpAction(
   } catch (e) {
     const r = toResult(e);
     return { ok: false, error: r.ok ? "неизвестная ошибка" : r.error };
+  }
+}
+
+/** Последние дампы под префиксом сопоставления — для выбора при ручном restore. */
+export async function listRestoreCandidatesAction(
+  databaseId: string,
+): Promise<{ ok: true; candidates: RestoreCandidate[] } | { ok: false; error: string }> {
+  try {
+    return { ok: true, candidates: await listRestoreCandidates(databaseId) };
+  } catch (e) {
+    const r = toResult(e);
+    return { ok: false, error: r.ok ? "неизвестная ошибка" : r.error };
+  }
+}
+
+/** Предохранитель target-инстанса: false запрещает любой restore в его базы. */
+export async function setInstanceRestorableAction(id: string, restorable: boolean): Promise<Result> {
+  try {
+    await setInstanceRestorable(id, restorable);
+    revalidatePath(`/instances/${id}`);
+    revalidatePath("/mapping");
+    return { ok: true };
+  } catch (e) {
+    return toResult(e);
   }
 }

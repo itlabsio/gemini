@@ -253,3 +253,16 @@ func TestCredsSecretData(t *testing.T) {
 		t.Error("root cert missing for verify-full")
 	}
 }
+
+// Флаг базы на Target гейтит только автоматические запуски; ручной — нет.
+func TestIsAutoTrigger(t *testing.T) {
+	for trig, want := range map[model.RunTrigger]bool{
+		model.TriggerWebhook:      true,
+		model.TriggerPollFallback: true,
+		model.TriggerManual:       false,
+	} {
+		if got := isAutoTrigger(trig); got != want {
+			t.Errorf("isAutoTrigger(%q) = %v, want %v", trig, got, want)
+		}
+	}
+}

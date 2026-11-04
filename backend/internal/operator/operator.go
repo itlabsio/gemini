@@ -91,8 +91,13 @@ func (o *Operator) jobParams(ctx context.Context, db *model.Database) (storageTy
 // ErrNoK8s — операция требует доступа к кластеру, которого нет.
 var ErrNoK8s = errors.New("operator: kubernetes client not configured")
 
-// ErrDatabaseDisabled — восстановление в целевую базу выключено на Target.
-var ErrDatabaseDisabled = errors.New("operator: target database is disabled")
+// ErrDatabaseDisabled — автовосстановление целевой базы выключено на Target
+// (флаг базы). Ручной restore его не проверяет.
+var ErrDatabaseDisabled = errors.New("operator: auto-restore is disabled for the target database")
+
+// ErrInstanceNotRestorable — restore в базы инстанса запрещён (предохранитель
+// instances.restorable): ни автоматически, ни вручную.
+var ErrInstanceNotRestorable = errors.New("operator: restore is disabled for the target instance")
 
 // ErrNoRestoreCredentials — инстанс в режиме in_place_per_db, а у целевой базы
 // не задан свой пользователь restore (он обязателен).
@@ -325,7 +330,7 @@ func restoreModeOf(inst *model.Instance) model.RestoreMode {
 // StartRestore запускает restore целевой базы (голова DR) по проверенному
 // дампу (см. VerifiedDump). v.BucketID — бакет, где дамп точно лежит; Job
 // начнёт с него и при ошибке перейдёт к остальным.
-func (o *Operator) StartRestore(ctx context.Context, m *model.DatabaseMapping, s3Key string, v *VerifiedDump, trigger model.RunTrigger, eventKey string) (*model.BackupRun, error) {
+func (o *Operator) StartRestore(ctx context.Context, m *model.DatabaseMapping, s3Key string, v *VerifiedDump, trigger model.RunTrigger, eventKey, initiatedBy string) (*model.BackupRun, error) {
 	if o.k8s == nil {
 		return nil, ErrNoK8s
 	}
@@ -333,14 +338,18 @@ func (o *Operator) StartRestore(ctx context.Context, m *model.DatabaseMapping, s
 	if err != nil {
 		return nil, err
 	}
-	// Восстанавливать или нет, решает галка целевой базы на Target — флаг
-	// бэкапа на Source сюда не доезжает и значения не имеет.
-	if !target.Enabled {
+	// Автовосстановление решает галка целевой базы на Target (флаг бэкапа на
+	// Source сюда не доезжает); ручной запуск её не проверяет.
+	if isAutoTrigger(trigger) && !target.Enabled {
 		return nil, ErrDatabaseDisabled
 	}
 	inst, err := o.store.GetInstance(ctx, target.InstanceID)
 	if err != nil {
 		return nil, err
+	}
+	// Предохранитель инстанса перекрывает всё, включая ручной запуск.
+	if !inst.Restorable {
+		return nil, ErrInstanceNotRestorable
 	}
 	if err := o.upsertInstanceCreds(ctx, inst); err != nil {
 		return nil, err
@@ -361,7 +370,7 @@ func (o *Operator) StartRestore(ctx context.Context, m *model.DatabaseMapping, s
 		S3ObjectKey: s3Key,
 		Checksum:    v.Checksum,
 		EventKey:    eventKey,
-		InitiatedBy: "webhook:source",
+		InitiatedBy: initiatedBy,
 	})
 	if errors.Is(err, store.ErrConflict) {
 		return nil, store.ErrConflict
@@ -394,6 +403,12 @@ func (o *Operator) StartRestore(ctx context.Context, m *model.DatabaseMapping, s
 	return o.store.UpdateRun(ctx, run.ID, store.RunUpdate{
 		Status: model.StatusRunning, K8sJobName: &jobName, MarkStarted: true,
 	})
+}
+
+// isAutoTrigger — restore, запущенный без участия человека (webhook от Source
+// или fallback-поллинг): такие гейтятся флагом автовосстановления базы.
+func isAutoTrigger(t model.RunTrigger) bool {
+	return t == model.TriggerWebhook || t == model.TriggerPollFallback
 }
 
 func (o *Operator) failRun(ctx context.Context, runID string, db *model.Database, kind model.RunKind, msg string) {

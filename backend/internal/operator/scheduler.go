@@ -88,7 +88,8 @@ func (o *Operator) reconcileTemplates(ctx context.Context) {
 	}
 
 	if o.cfg.IsTarget() {
-		maps, err := o.store.EnabledMappings(ctx)
+		// Шаблон и креды — для всех присутствующих целевых баз (см. TemplateMappings).
+		maps, err := o.store.TemplateMappings(ctx)
 		if err != nil {
 			log.Printf("operator: list mappings: %v", err)
 		} else {

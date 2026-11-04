@@ -10,7 +10,7 @@ import {
 import { can, projectsAtLeast } from "@/lib/rbac";
 import type { DatabaseMapping } from "@/lib/types";
 import { MappingEditor } from "@/components/mapping-editor";
-import { MappingActiveBadge } from "@/components/mapping-active-badge";
+import { MappingActiveBadge, type RestoreState } from "@/components/mapping-active-badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +39,7 @@ export default async function MappingPage() {
             instanceId: i.id,
             project: i.project,
             label: `${i.name}/${d.db_name}`,
+            restore: (!i.restorable ? "off" : d.enabled ? "auto" : "manual") as RestoreState,
           })),
         )
         .catch(() => []),
@@ -65,6 +66,7 @@ export default async function MappingPage() {
   const hasSourcePairing = me.source_paired;
   const targetLabel = new Map(targets.map((t) => [t.id, t.label]));
   const targetProject = new Map(targets.map((t) => [t.id, t.project]));
+  const targetRestore = new Map(targets.map((t) => [t.id, t.restore]));
 
   return (
     <div className="flex flex-col gap-6">
@@ -125,7 +127,7 @@ export default async function MappingPage() {
                 <TableHead>Целевая база</TableHead>
                 <TableHead>Владелец</TableHead>
                 <TableHead>S3 prefix</TableHead>
-                <TableHead>Активно</TableHead>
+                <TableHead>Восстановление</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -146,6 +148,7 @@ export default async function MappingPage() {
                   <TableCell>
                     <MappingActiveBadge
                       mapping={m}
+                      state={targetRestore.get(m.target_database_id)}
                       sourceLabel={m.source_db_name || m.source_database_external_id}
                       targetLabel={
                         targetLabel.get(m.target_database_id) ?? m.target_database_id

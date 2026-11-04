@@ -146,6 +146,9 @@ type Object struct {
 	LastModified time.Time
 	// Ready — рядом лежит <key>.sha256, то есть дамп залит полностью.
 	Ready bool
+	// Signed — рядом лежит <key>.sig. Только наличие файла: валидность подписи
+	// проверяет Target (operator.VerifiedDump) перед restore.
+	Signed bool
 }
 
 // DirectChild сообщает, что key лежит прямо под prefix (prefix оканчивается на
@@ -162,6 +165,7 @@ func DirectChild(prefix, key string) bool {
 func (c *Client) ListDumps(ctx context.Context, prefix string) ([]Object, error) {
 	var out []Object
 	sums := map[string]bool{}
+	sigs := map[string]bool{}
 	for info := range c.mc.ListObjects(ctx, c.bucket, minio.ListObjectsOptions{
 		Prefix:    prefix,
 		Recursive: true,
@@ -176,14 +180,18 @@ func (c *Client) ListDumps(ctx context.Context, prefix string) ([]Object, error)
 			sums[key] = true
 			continue
 		}
-		if strings.HasSuffix(info.Key, SignatureSuffix) ||
-			strings.HasSuffix(info.Key, ExtensionsSuffix) {
+		if key, ok := strings.CutSuffix(info.Key, SignatureSuffix); ok {
+			sigs[key] = true
+			continue
+		}
+		if strings.HasSuffix(info.Key, ExtensionsSuffix) {
 			continue
 		}
 		out = append(out, Object{Key: info.Key, Size: info.Size, LastModified: info.LastModified})
 	}
 	for i := range out {
 		out[i].Ready = sums[out[i].Key]
+		out[i].Signed = sigs[out[i].Key]
 	}
 	return out, nil
 }

@@ -143,7 +143,7 @@ func (p *Pool) LocateDumps(ctx context.Context, prefix string) ([]LocatedDump, e
 		for _, o := range objs {
 			cur, ok := byKey[o.Key]
 			if !ok {
-				cur = &LocatedDump{Object: o}
+				cur = &LocatedDump{Object: Object{Key: o.Key, Size: o.Size, LastModified: o.LastModified}}
 				byKey[o.Key] = cur
 				order = append(order, o.Key)
 			} else if o.LastModified.After(cur.LastModified) {
@@ -152,6 +152,8 @@ func (p *Pool) LocateDumps(ctx context.Context, prefix string) ([]LocatedDump, e
 			if o.Ready {
 				cur.Ready = true
 				cur.ReadyIn = append(cur.ReadyIn, c)
+				// Подпись учитываем только у готовой копии: restore берёт дамп оттуда.
+				cur.Signed = cur.Signed || o.Signed
 			}
 		}
 	}

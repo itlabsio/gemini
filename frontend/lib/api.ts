@@ -14,6 +14,7 @@ import type {
   Me,
   Project,
   ResourceSpec,
+  RestoreCandidate,
   RunsPage,
   S3Bucket,
   Settings,
@@ -235,8 +236,23 @@ export const deleteS3Bucket = (id: string) =>
 export const testS3Bucket = (id: string) =>
   apiFetch<{ status: string }>(`/api/s3-buckets/${id}/test`, { method: "POST" });
 
-export const runDatabase = (id: string) =>
-  apiFetch<BackupRun>(`/api/databases/${id}/run`, { method: "POST" });
+/** Ручной запуск. На target s3ObjectKey — выбранный дамп; без него — самый свежий. */
+export const runDatabase = (id: string, s3ObjectKey?: string) =>
+  apiFetch<BackupRun>(`/api/databases/${id}/run`, {
+    method: "POST",
+    ...(s3ObjectKey ? { body: JSON.stringify({ s3_object_key: s3ObjectKey }) } : {}),
+  });
+
+/** Последние дампы под префиксом сопоставления — выбор для ручного restore (target). */
+export const listRestoreCandidates = (databaseId: string) =>
+  apiFetch<RestoreCandidate[]>(`/api/databases/${databaseId}/restore-candidates`);
+
+/** Предохранитель target-инстанса (superuser). */
+export const setInstanceRestorable = (id: string, restorable: boolean) =>
+  apiFetch<Instance>(`/api/instances/${id}/restorable`, {
+    method: "PUT",
+    body: JSON.stringify({ restorable }),
+  });
 
 /** Готовые дампы базы в S3, свежие первыми (source, admin проекта). */
 export const listDumps = (databaseId: string) =>
@@ -265,7 +281,6 @@ export interface MappingPayload {
   target_database_id: string;
   target_owner: string;
   s3_prefix: string;
-  enabled: boolean;
 }
 export const saveMapping = (p: MappingPayload) =>
   apiFetch<DatabaseMapping>("/api/mapping", { method: "POST", body: JSON.stringify(p) });

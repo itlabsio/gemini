@@ -23,19 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
-
-const UNITS = ["B", "KiB", "MiB", "GiB", "TiB"];
-
-function fmtBytes(n: number): string {
-  let v = n;
-  let i = 0;
-  while (v >= 1024 && i < UNITS.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${i === 0 ? v : v.toFixed(1)} ${UNITS[i]}`;
-}
+import { cn, fmtBytes } from "@/lib/utils";
 
 // Выданную ссылку переиспользуем, пока до её истечения больше этого запаса:
 // повторное «Скачать» не идёт на сервер (новая ссылка, запись в аудит, лимит).

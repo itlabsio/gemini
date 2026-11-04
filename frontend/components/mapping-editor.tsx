@@ -266,7 +266,6 @@ function MappingRow({
                 target_database_id: target,
                 target_owner: owner.trim(),
                 s3_prefix: prefix,
-                enabled: true,
               });
               if (res.ok) toast.success(`${candidate.db_name}: сохранено`);
               else toast.error(res.error);

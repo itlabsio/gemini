@@ -24,6 +24,7 @@ import { RunningStopButton } from "@/components/running-stop-button";
 import { DeleteDatabaseButton } from "@/components/delete-database-button";
 import { RunHistoryStrip } from "@/components/run-history-strip";
 import { DumpsButton } from "@/components/dumps-dialog";
+import { RestoreButton } from "@/components/restore-dialog";
 import {
   bytesQuantityError,
   cn,
@@ -66,6 +67,8 @@ interface Props {
   headRole: "source" | "target";
   /** Стратегия restore инстанса (только target). */
   restoreMode?: RestoreMode;
+  /** Target: restore в базы инстанса разрешён (предохранитель superuser'а). */
+  restorable?: boolean;
   canEdit: boolean;
   canRun: boolean;
   /** Скачивание дампов: source, admin проекта и флаг инстанса. */
@@ -119,6 +122,7 @@ export function DatabasesManager({
   defaultStorageType,
   headRole,
   restoreMode,
+  restorable = true,
   canEdit,
   canRun,
   canDownload = false,
@@ -255,6 +259,8 @@ export function DatabasesManager({
       instanceId={instanceId}
       headRole={headRole}
       perDB={perDB}
+      restoreMode={restoreMode}
+      restorable={restorable}
       loginRoles={loginRoles}
       canEdit={canEdit}
       canRun={canRun}
@@ -267,6 +273,7 @@ export function DatabasesManager({
       defaultStorageType={defaultStorageType}
       run={run}
       onStop={stopRun}
+      onStarted={() => void refreshActive()}
     />
   );
 
@@ -309,7 +316,7 @@ export function DatabasesManager({
             <TableHeader>
               <TableRow>
                 <TableHead>База</TableHead>
-                <TableHead>{isTarget ? "Восстановление" : "Бэкап"}</TableHead>
+                <TableHead>{isTarget ? "Автовосстановление" : "Бэкап"}</TableHead>
                 {headRole === "source" && <TableHead>Расписание (cron)</TableHead>}
                 {perDB && <TableHead>Пользователь restore</TableHead>}
                 <TableHead>Хранилище дампа</TableHead>
@@ -350,6 +357,8 @@ function Row({
   instanceId,
   headRole,
   perDB,
+  restoreMode,
+  restorable,
   loginRoles,
   canEdit,
   canRun,
@@ -362,11 +371,14 @@ function Row({
   defaultStorageType,
   run,
   onStop,
+  onStarted,
 }: {
   db: Database;
   instanceId: string;
   headRole: "source" | "target";
   perDB: boolean;
+  restoreMode?: RestoreMode;
+  restorable: boolean;
   loginRoles: LoginRoles;
   canEdit: boolean;
   canRun: boolean;
@@ -380,7 +392,11 @@ function Row({
   defaultStorageType: string;
   run: (fn: () => Promise<ActionResult>, okMsg?: string) => void;
   onStop: (r: BackupRun) => void;
+  onStarted: () => void;
 }) {
+  const isTarget = headRole === "target";
+  // Предохранитель инстанса: restore запрещён целиком, флаг базы не действует.
+  const blocked = isTarget && !restorable;
   const [cron, setCron] = useState(db.schedule_cron ?? "");
   const [stType, setStType] = useState(db.storage_type ?? "");
   const [stSize, setStSize] = useState(db.storage_size ?? "");
@@ -424,19 +440,44 @@ function Row({
       <TableCell>
         <div className="flex items-center gap-3">
           <Switch
-            checked={db.enabled}
-            disabled={!canEdit || disabled || running}
+            checked={db.enabled && !blocked}
+            disabled={!canEdit || disabled || running || blocked}
             onCheckedChange={(checked) =>
               run(
                 () => patchDatabaseAction(instanceId, db.id, { enabled: checked }),
-                checked ? "База включена" : "База выключена",
+                isTarget
+                  ? checked
+                    ? "Автовосстановление включено"
+                    : "Автовосстановление выключено"
+                  : checked
+                    ? "База включена"
+                    : "База выключена",
               )
             }
           />
-          {headRole !== "source" ? (
-            <span className="text-sm text-muted-foreground">
-              {db.enabled ? "включён" : "выключен"}
-            </span>
+          {blocked ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="cursor-help text-sm text-destructive">отключено</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                Восстановление в инстанс запрещено superuser — ни автоматически, ни
+                вручную
+              </TooltipContent>
+            </Tooltip>
+          ) : isTarget ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="cursor-help text-sm text-muted-foreground">
+                  {db.enabled ? "включено" : "выключено"}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {db.enabled
+                  ? "Свежий дамп с Source накатывается автоматически; вручную — кнопкой «Запустить»"
+                  : "Только вручную — кнопкой «Запустить» с выбором дампа"}
+              </TooltipContent>
+            </Tooltip>
           ) : !db.enabled ? null : manualOnly ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -609,7 +650,16 @@ function Row({
                 className={STATUS_SLOT}
               />
             )
-          ) : canRun && db.enabled && missingRestoreUser ? (
+          ) : blocked ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="destructive" className={STATUS_SLOT}>
+                  отключено
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>Восстановление в инстанс запрещено superuser</TooltipContent>
+            </Tooltip>
+          ) : canRun && (isTarget || db.enabled) && missingRestoreUser ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Badge variant="warning" className={STATUS_SLOT}>
@@ -620,6 +670,16 @@ function Row({
                 Инстанс в режиме «пользователь на базу» — задайте пользователя restore
               </TooltipContent>
             </Tooltip>
+          ) : canRun && isTarget ? (
+            <RestoreButton
+              instanceId={instanceId}
+              databaseId={db.id}
+              dbName={db.db_name}
+              restoreMode={restoreMode}
+              disabled={disabled}
+              onStarted={onStarted}
+              className={STATUS_SLOT}
+            />
           ) : canRun && db.enabled ? (
             <Button
               size="sm"
@@ -627,7 +687,7 @@ function Row({
               onClick={() =>
                 run(
                   () => runDatabaseAction(instanceId, db.id),
-                  headRole === "source" ? "Dump запущен" : "Restore запущен",
+                  "Dump запущен",
                 )
               }
               disabled={disabled}

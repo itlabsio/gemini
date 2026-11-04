@@ -22,6 +22,8 @@ export const AUDIT_ACTIONS: Record<string, { label: string; kind: AuditKind }> =
   "instance.delete": { label: "Удаление инстанса", kind: "delete" },
   "instance.discover": { label: "Discovery баз", kind: "run" },
   "instance.unmanage": { label: "Снятие метки Terraform с инстанса", kind: "update" },
+  "instance.restore-disable": { label: "Запрет восстановления в инстанс", kind: "update" },
+  "instance.restore-enable": { label: "Разрешение восстановления в инстанс", kind: "update" },
   "database.patch": { label: "Изменение базы", kind: "update" },
   "database.delete": { label: "Удаление базы", kind: "delete" },
   "database.run.dump": { label: "Ручной dump", kind: "run" },

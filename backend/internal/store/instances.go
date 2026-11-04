@@ -41,7 +41,7 @@ type InstanceInput struct {
 // instanceCols — только адресная часть, из таблицы instances.
 // Дескриптор кред подтягивается join'ом (см. instanceSelect); зашифрованный
 // пароль в этих выборках не участвует НИКОГДА — он читается лишь Credentials().
-const instanceCols = `i.id, i.role, i.name, COALESCE(i.project, ''), i.managed_by, i.downloadable, i.host, i.port, i.restore_mode,
+const instanceCols = `i.id, i.role, i.name, COALESCE(i.project, ''), i.managed_by, i.downloadable, i.restorable, i.host, i.port, i.restore_mode,
 	i.ssl_mode, i.ssl_root_cert, i.discovery_db, i.excluded_databases, i.server_version_num,
 	i.created_by, i.created_at, i.updated_at,
 	c.auth_type, c.plain_username,
@@ -52,7 +52,7 @@ const instanceSelect = `SELECT ` + instanceCols + `
 
 func scanInstance(row pgx.Row) (*model.Instance, error) {
 	var i model.Instance
-	err := row.Scan(&i.ID, &i.Role, &i.Name, &i.Project, &i.ManagedBy, &i.Downloadable, &i.Host, &i.Port, &i.RestoreMode,
+	err := row.Scan(&i.ID, &i.Role, &i.Name, &i.Project, &i.ManagedBy, &i.Downloadable, &i.Restorable, &i.Host, &i.Port, &i.RestoreMode,
 		&i.SSLMode, &i.SSLRootCert, &i.DiscoveryDB, &i.ExcludedDatabases, &i.ServerVersionNum,
 		&i.CreatedBy, &i.CreatedAt, &i.UpdatedAt,
 		&i.AuthType, &i.PlainUsername,
@@ -294,6 +294,18 @@ func (s *Store) ClearInstanceManagedBy(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// SetInstanceRestorable включает/выключает restore в базы инстанса (Target).
+func (s *Store) SetInstanceRestorable(ctx context.Context, id string, restorable bool) (*model.Instance, error) {
+	ct, err := s.pool.Exec(ctx, `UPDATE instances SET restorable = $2 WHERE id = $1`, id, restorable)
+	if err != nil {
+		return nil, err
+	}
+	if ct.RowsAffected() == 0 {
+		return nil, ErrNotFound
+	}
+	return s.GetInstance(ctx, id)
 }
 
 // DeleteInstance удаляет инстанс (каскадно — его databases).

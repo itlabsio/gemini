@@ -191,7 +191,9 @@ type saveMappingRequest struct {
 	TargetDatabaseID         string `json:"target_database_id"`
 	TargetOwner              string `json:"target_owner"`
 	S3Prefix                 string `json:"s3_prefix"`
-	Enabled                  *bool  `json:"enabled"`
+	// Enabled — устаревшее (колонку убрала миграция 027), игнорируется; оставлено,
+	// чтобы старые клиенты не получали 400 из-за DisallowUnknownFields.
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 func (s *Server) saveMapping(w http.ResponseWriter, r *http.Request) {
@@ -269,10 +271,6 @@ func (s *Server) saveMapping(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	enabled := true
-	if req.Enabled != nil {
-		enabled = *req.Enabled
-	}
 	id, _ := ctxIdentity(r)
 	m, err := s.d.Store.UpsertMapping(r.Context(), store.MappingInput{
 		HeadPairingID:            req.HeadPairingID,
@@ -281,7 +279,6 @@ func (s *Server) saveMapping(w http.ResponseWriter, r *http.Request) {
 		TargetDatabaseID:         req.TargetDatabaseID,
 		TargetOwner:              owner,
 		S3Prefix:                 prefix,
-		Enabled:                  enabled,
 	}, id)
 	if err != nil {
 		writeStoreError(w, err)

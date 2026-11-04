@@ -14,6 +14,7 @@ import {
 } from "@/lib/api";
 import { DatabasesManager } from "@/components/databases-manager";
 import { InstanceActions } from "@/components/instance-actions";
+import { RestorableToggle } from "@/components/restorable-toggle";
 import { SslModeBadge } from "@/components/ssl-badge";
 import { SecretBadge } from "@/components/secret-badge";
 import { ManagedBadge } from "@/components/managed-badge";
@@ -58,6 +59,8 @@ export default async function InstanceDetailPage({ params }: Props) {
   }
 
   const me = await getMe();
+  // Restore в базы — только на target-инстансе Gemini.
+  const isTarget = me.head_role === "target";
   const [databases, activeRuns, recentRuns, settings] = await Promise.all([
     listDatabases(id).catch(() => []),
     listActiveRuns().catch(() => []),
@@ -88,13 +91,18 @@ export default async function InstanceDetailPage({ params }: Props) {
           </Badge>
           <ManagedBadge managedBy={instance.managed_by} />
         </div>
-        {/* править и удалять инстанс может только superuser */}
+        {/* править и удалять инстанс, запрещать restore может только superuser */}
         {me.superuser && (
-          <InstanceActions
-            id={id}
-            name={instance.name}
-            canUnmanage={me.superuser && instance.managed_by === "terraform"}
-          />
+          <div className="flex items-center gap-2">
+            {isTarget && (
+              <RestorableToggle id={id} name={instance.name} restorable={instance.restorable} />
+            )}
+            <InstanceActions
+              id={id}
+              name={instance.name}
+              canUnmanage={me.superuser && instance.managed_by === "terraform"}
+            />
+          </div>
         )}
       </div>
 
@@ -126,6 +134,18 @@ export default async function InstanceDetailPage({ params }: Props) {
               label="База discovery"
               value={instance.discovery_db || "postgres"}
             />
+            {isTarget && (
+              <Detail
+                label="Восстановление"
+                value={
+                  instance.restorable ? (
+                    "разрешено"
+                  ) : (
+                    <Badge variant="destructive">отключено</Badge>
+                  )
+                }
+              />
+            )}
             {instance.role === "target" && (
               <Detail
                 label="Стратегия restore"
@@ -183,6 +203,7 @@ export default async function InstanceDetailPage({ params }: Props) {
         defaultStorageType={settings?.default_storage_type ?? ""}
         headRole={me.head_role}
         restoreMode={instance.restore_mode}
+        restorable={instance.restorable}
         canEdit={can(me, instance.project, "admin")}
         canRun={can(me, instance.project, "operator")}
         canDownload={

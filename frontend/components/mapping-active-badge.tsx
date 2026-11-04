@@ -17,15 +17,38 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-// Бейдж «Активно»; для admin при наведении поверх него появляется крестик,
-// разрывающий сопоставление (после подтверждения).
+/** Как восстанавливается целевая база: авто, только вручную, запрещено на инстансе. */
+export type RestoreState = "auto" | "manual" | "off";
+
+const STATE_BADGE: Record<
+  RestoreState,
+  { label: string; variant: "success" | "secondary" | "destructive"; hint: string }
+> = {
+  auto: { label: "авто", variant: "success", hint: "Свежие дампы накатываются автоматически" },
+  manual: {
+    label: "вручную",
+    variant: "secondary",
+    hint: "Автовосстановление базы выключено — только вручную",
+  },
+  off: {
+    label: "отключено",
+    variant: "destructive",
+    hint: "Восстановление в инстанс запрещено superuser",
+  },
+};
+
+// Бейдж статуса восстановления; для admin при наведении поверх него появляется
+// крестик, разрывающий сопоставление (после подтверждения).
 export function MappingActiveBadge({
   mapping,
+  state,
   sourceLabel,
   targetLabel,
   canUnlink,
 }: {
   mapping: DatabaseMapping;
+  /** undefined — целевая база недоступна пользователю или не найдена. */
+  state?: RestoreState;
   sourceLabel: string;
   targetLabel: string;
   canUnlink: boolean;
@@ -33,9 +56,10 @@ export function MappingActiveBadge({
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
 
+  const st = state ? STATE_BADGE[state] : null;
   const badge = (
-    <Badge variant={mapping.enabled ? "success" : "secondary"}>
-      {mapping.enabled ? "да" : "нет"}
+    <Badge variant={st?.variant ?? "outline"} title={canUnlink ? undefined : st?.hint}>
+      {st?.label ?? "—"}
     </Badge>
   );
   if (!canUnlink) return badge;

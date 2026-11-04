@@ -122,7 +122,7 @@ func (s *Server) patchDatabase(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, db)
 }
 
-// runDatabase — ручной запуск: dump на Source, restore на DR.
+// runDatabase — ручной запуск: dump на Source, restore на DR (см. runRestore).
 // Если для базы уже есть активный Job — запуск запрещён (409).
 func (s *Server) runDatabase(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
@@ -143,46 +143,7 @@ func (s *Server) runDatabase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// DR: ручной restore из последнего доступного дампа по сопоставлению.
-	m, err := s.d.Store.MappingByTargetDatabaseID(r.Context(), id)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "no mapping for this target database")
-		return
-	}
-	objects, err := s.d.Storage.ListDumps(r.Context(), strings.TrimSuffix(m.S3Prefix, "/")+"/")
-	if errors.Is(err, storage.ErrNoBuckets) {
-		writeError(w, http.StatusServiceUnavailable, "S3 storage is not configured")
-		return
-	}
-	if err != nil || len(objects) == 0 {
-		writeError(w, http.StatusNotFound, "no dumps found under mapping prefix")
-		return
-	}
-	newest := objects[0]
-	for _, o := range objects {
-		if o.LastModified.After(newest.LastModified) {
-			newest = o
-		}
-	}
-	// Сумму и список расширений берём только вместе с проверкой подписи
-	// Source: ручной запуск не делает содержимое бакета доверенным.
-	v, err := s.d.Operator.VerifiedDump(r.Context(), newest.Key)
-	if err != nil {
-		writeError(w, http.StatusFailedDependency, "dump is not verifiably from Source: "+err.Error()+
-			" — убедитесь, что пара с Source активна; дампы, снятые до установления пары, "+
-			"подписываются автоматически в течение нескольких минут, либо запустите dump на Source заново")
-		return
-	}
-	// Ручной запуск без event_key: ключ уникален навсегда (и для failed), так
-	// что повтор того же дампа упирался бы в него. От параллельных запусков
-	// защищает backup_runs_one_active.
-	run, err := s.d.Operator.StartRestore(r.Context(), m, newest.Key, v, model.TriggerManual, "")
-	if err != nil {
-		writeRunStartError(w, err)
-		return
-	}
-	s.audit(r, "database.run.restore", id, map[string]any{"s3_object_key": newest.Key})
-	writeJSON(w, http.StatusAccepted, run)
+	s.runRestore(w, r, db, idn)
 }
 
 // deleteDatabase убирает из Gemini запись удалённой (пропавшей из discovery)
@@ -226,7 +187,9 @@ func writeRunStartError(w http.ResponseWriter, err error) {
 	case errors.Is(err, operator.ErrNoK8s):
 		writeError(w, http.StatusServiceUnavailable, "kubernetes client is not configured")
 	case errors.Is(err, operator.ErrDatabaseDisabled):
-		writeError(w, http.StatusConflict, "restore is disabled for this target database")
+		writeError(w, http.StatusConflict, "auto-restore is disabled for this target database")
+	case errors.Is(err, operator.ErrInstanceNotRestorable):
+		writeError(w, http.StatusConflict, "restore is disabled for this target instance")
 	case errors.Is(err, operator.ErrNoRestoreCredentials):
 		writeError(w, http.StatusConflict,
 			"restore user is not set for this target database — instance is in in_place_per_db mode, set it on the instance page")

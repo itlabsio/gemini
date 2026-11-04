@@ -61,3 +61,16 @@ export function bytesQuantityError(v: string, opts?: { min?: string }): string |
 
 /** Минимальный размер тома дампа — как k8s.MinWorkDirSize на бэкенде. */
 export const MIN_STORAGE_SIZE = "1Gi";
+
+const BYTE_UNITS = ["B", "KiB", "MiB", "GiB", "TiB"];
+
+/** Размер в байтах для людей: «12.3 MiB». */
+export function fmtBytes(n: number): string {
+  let v = n;
+  let i = 0;
+  while (v >= 1024 && i < BYTE_UNITS.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${i === 0 ? v : v.toFixed(1)} ${BYTE_UNITS[i]}`;
+}

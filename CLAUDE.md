@@ -14,7 +14,8 @@
 | Поле инстанса PostgreSQL / базы / сопоставления | миграция `db/migrations/NNN_*.sql` + `model/model.go` + `store/{instances,databases,mappings}.go` + `api/*` + `frontend/lib/types.ts` |
 | Запуск dump/restore, статусы прогонов | `operator/operator.go`: `StartDump`, `StartRestore`, `Watch`, `reconcileOnce`, `onRunSucceeded`, `onRunFailed`, `CancelRun` |
 | Расписание (CronJob'ы), шаблоны | `operator/scheduler.go` (`reconcileTemplates`), `operator.go:ensureCronJob`, `k8s/cronjobs.go` |
-| Fallback-поллинг S3 на target | `operator/poller.go` (`pollOnce` — берёт только **последний** дамп префикса) |
+| Fallback-поллинг S3 на target | `operator/poller.go` (`pollOnce` — берёт только **последний** дамп префикса, только базы с автовосстановлением) |
+| Ручной restore с выбором дампа, предохранитель инстанса | `api/restore.go` (`listRestoreCandidates` — 7 последних, `runRestore`, `setInstanceRestorable`); гейты — `operator.go:StartRestore` (`isAutoTrigger`: `databases.enabled` на target = только авто; `instances.restorable=false` — запрет всего); выборки — `store/mappings.go` (`AutoRestoreMappings`, `TemplateMappings`); UI — `components/restore-dialog.tsx`, `components/restorable-toggle.tsx` |
 | Сроки хранения аудита и прогонов | `operator/retention.go` (`RunRetention`), `store/retention.go` (`PruneRuns` не трогает активные и последний прогон вида по базе) |
 | Подпись и проверка дампов (ed25519) | `operator.go`: `signDump`, `BackfillSignatures`, `VerifiedDump`; примитивы — `peer/peer.go` (`SignArtifact`, `VerifyArtifact`, v1/v2) |
 | Webhook между инстансами Gemini | входящие: `api/webhook.go` (`backup-ready`, `restore-status`); исходящие: `operator.go` `notifyPeerBackupReady` / `notifyPeerRestoreStatus`; HMAC и retry — `peer/peer.go` |
@@ -52,7 +53,7 @@
 `Instance` (сервер PostgreSQL) → `Database` (бэкапится/нет, cron) → `BackupRun` (kind dump|restore, trigger,
 `event_key` для идемпотентности). Target: `DatabaseMapping` (source external_id ↔ локальная `Database`,
 `s3_prefix`, `target_owner`). `HeadPairing`/`PairingSecret` — связь source↔target. `S3Bucket`, `Settings`, `Project` (RBAC; `instances.project`).
-Миграции пронумерованы `001…026`; следующая — `027_*.sql`.
+Миграции пронумерованы `001…027`; следующая — `028_*.sql`.
 
 ### Потоки
 - **Backup (source):** CronJob/ручной запуск → `StartDump` → Job → `runDump` → S3 (`.dump`, `.sha256`, extensions)

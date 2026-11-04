@@ -13,7 +13,7 @@ import (
 )
 
 // RunPoller (голова DR) — fallback-поллинг S3: каждые cfg.PollInterval обходит
-// s3_prefix активных сопоставлений и запускает restore по новым дампам, для
+// s3_prefix сопоставлений с включённым автовосстановлением и запускает restore по новым дампам, для
 // которых уже появился .sha256-файл. Идемпотентность — через event_key.
 func (o *Operator) RunPoller(ctx context.Context) {
 	if o.k8s == nil {
@@ -33,7 +33,7 @@ func (o *Operator) RunPoller(ctx context.Context) {
 }
 
 func (o *Operator) pollOnce(ctx context.Context) {
-	mappings, err := o.store.EnabledMappings(ctx)
+	mappings, err := o.store.AutoRestoreMappings(ctx)
 	if err != nil {
 		log.Printf("operator: poller list mappings: %v", err)
 		return
@@ -77,7 +77,7 @@ func (o *Operator) pollOnce(ctx context.Context) {
 			continue
 		}
 
-		_, err = o.StartRestore(ctx, &m, newest, v, model.TriggerPollFallback, eventKey)
+		_, err = o.StartRestore(ctx, &m, newest, v, model.TriggerPollFallback, eventKey, "poller")
 		switch {
 		case err == nil:
 			log.Printf("operator: poller started restore for %s (%s)", m.SourceDBName, newest)

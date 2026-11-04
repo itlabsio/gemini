@@ -57,6 +57,10 @@ type Instance struct {
 	// (только Source). Меняет только superuser.
 	Downloadable bool `json:"downloadable"`
 
+	// Restorable — разрешён ли restore в базы инстанса (только Target):
+	// false запрещает и автоматический, и ручной. Меняет только superuser.
+	Restorable bool `json:"restorable"`
+
 	// RestoreMode — как target-голова восстанавливает базы этого инстанса.
 	// Пусто в API-ответе для source-инстансов. См. RestoreMode.
 	RestoreMode RestoreMode `json:"restore_mode,omitempty"`
@@ -113,7 +117,9 @@ type Database struct {
 	ID         string `json:"id"`
 	InstanceID string `json:"instance_id"`
 	DBName     string `json:"db_name"`
-	Enabled    bool   `json:"enabled"`
+	// Enabled — на Source: бэкап по расписанию разрешён; на Target: включено
+	// автовосстановление (webhook/поллинг). Ручной restore от него не зависит.
+	Enabled bool `json:"enabled"`
 
 	// ScheduleCron заполняется только на Source.
 	ScheduleCron string `json:"schedule_cron,omitempty"`
@@ -183,7 +189,6 @@ type DatabaseMapping struct {
 	// принадлежать восстановленная база (restore идёт под суперюзером).
 	TargetOwner string `json:"target_owner"`
 	S3Prefix    string `json:"s3_prefix"`
-	Enabled     bool   `json:"enabled"`
 
 	CreatedBy string    `json:"created_by"`
 	CreatedAt time.Time `json:"created_at"`

@@ -13,6 +13,8 @@ export interface Instance {
   managed_by: string;
   /** Админы проекта могут скачивать дампы баз (только source); меняет superuser. */
   downloadable: boolean;
+  /** Target: restore в базы инстанса разрешён (false — ни авто, ни вручную); меняет superuser. */
+  restorable: boolean;
   name: string;
   host: string;
   port: number;
@@ -136,6 +138,15 @@ export interface Dump {
   buckets: { id: string; name: string }[];
 }
 
+/** Дамп-кандидат для ручного restore на target (последние 7 под префиксом сопоставления). */
+export interface RestoreCandidate {
+  key: string;
+  size: number;
+  last_modified: string;
+  /** Рядом есть .sig; валидность подписи проверяется при запуске. */
+  signed: boolean;
+}
+
 /** Ссылка на скачивание дампа и то, что нужно для ручного pg_restore. */
 export interface DumpDownload {
   url: string;
@@ -178,7 +189,6 @@ export interface DatabaseMapping {
   /** Роль-владелец восстановленной базы на target-кластере. */
   target_owner: string;
   s3_prefix: string;
-  enabled: boolean;
   created_at: string;
   updated_at: string;
 }
