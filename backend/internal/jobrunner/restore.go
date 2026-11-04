@@ -299,12 +299,120 @@ func databaseExists(ctx context.Context, e Env, name string) (bool, error) {
 	return strings.TrimSpace(string(out)) == "1", nil
 }
 
-// terminateBackends обрывает чужие сессии к targetDB, подключаясь к connectDB.
+// terminateBackends обрывает чужие сессии к targetDB, подключаясь к connectDB,
+// и пишет в лог, сколько и чьих сессий оборвано: restore на target рвёт
+// соединения приложений, и по логу должно быть видно, кого он задел.
 func terminateBackends(ctx context.Context, e Env, connectDB, targetDB string) error {
-	return psqlExec(ctx, e, connectDB, fmt.Sprintf(
-		`SELECT pg_terminate_backend(pid) FROM pg_stat_activity
-		 WHERE datname = %s AND pid <> pg_backend_pid();`, quoteLit(targetDB),
-	))
+	// Поля и записи разделены нулевым байтом (-z/-0): application_name
+	// задаёт клиент и может содержать что угодно.
+	cmd := exec.CommandContext(ctx, pgTool("psql", e.pgMajor), "--set", "ON_ERROR_STOP=1",
+		"--no-psqlrc", "--tuples-only", "--no-align", "--quiet",
+		"--field-separator-zero", "--record-separator-zero",
+		"--command", fmt.Sprintf(
+			`SELECT COALESCE(application_name, ''), COALESCE(usename, ''), pg_terminate_backend(pid)
+			 FROM pg_stat_activity
+			 WHERE datname = %s AND pid <> pg_backend_pid();`, quoteLit(targetDB)))
+	cmd.Env = e.pgEnv(connectDB)
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return err
+	}
+	if msg := summarizeTerminated(targetDB, parseTerminated(out)); msg != "" {
+		log.Print(msg)
+	}
+	return nil
+}
+
+// backendSession — чужая сессия к целевой базе и исход pg_terminate_backend.
+type backendSession struct {
+	App, User  string
+	Terminated bool
+}
+
+// parseTerminated разбирает вывод terminateBackends: записи по 3 поля
+// (application_name, usename, t/f), всё разделено нулевым байтом.
+func parseTerminated(out []byte) []backendSession {
+	fields := strings.Split(strings.TrimRight(string(out), "\x00\n"), "\x00")
+	var res []backendSession
+	for i := 0; i+2 < len(fields); i += 3 {
+		res = append(res, backendSession{
+			App: fields[i], User: fields[i+1], Terminated: strings.TrimSpace(fields[i+2]) == "t",
+		})
+	}
+	return res
+}
+
+// summarizeTerminated — строка лога: «restore: terminated 3 session(s) to db
+// (api@app ×2, psql@admin)»; сессии, которые оборвать не вышло, — отдельно.
+// Нет сессий — пусто, лог не засоряем.
+func summarizeTerminated(db string, sessions []backendSession) string {
+	if len(sessions) == 0 {
+		return ""
+	}
+	var killed, alive []backendSession
+	for _, s := range sessions {
+		if s.Terminated {
+			killed = append(killed, s)
+		} else {
+			alive = append(alive, s)
+		}
+	}
+	msg := fmt.Sprintf("restore: terminated %d session(s) to %s", len(killed), db)
+	if len(killed) > 0 {
+		msg += " (" + groupSessions(killed) + ")"
+	}
+	if len(alive) > 0 {
+		msg += fmt.Sprintf("; failed to terminate %d (%s)", len(alive), groupSessions(alive))
+	}
+	return msg
+}
+
+// groupSessions — «app@user ×N» по убыванию N, при равенстве по имени.
+func groupSessions(sessions []backendSession) string {
+	counts := map[string]int{}
+	for _, s := range sessions {
+		counts[sessionLabel(s)]++
+	}
+	labels := make([]string, 0, len(counts))
+	for l := range counts {
+		labels = append(labels, l)
+	}
+	slices.SortFunc(labels, func(a, b string) int {
+		if counts[a] != counts[b] {
+			return counts[b] - counts[a]
+		}
+		return strings.Compare(a, b)
+	})
+	parts := make([]string, len(labels))
+	for i, l := range labels {
+		parts[i] = l
+		if n := counts[l]; n > 1 {
+			parts[i] += fmt.Sprintf(" ×%d", n)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// sessionLabel — «app@user» для лога. Значения от клиента: без управляющих
+// символов (не ломать строки лога) и обрезаны по длине.
+func sessionLabel(s backendSession) string {
+	clean := func(v, empty string) string {
+		v = strings.Map(func(r rune) rune {
+			if r < 0x20 || r == 0x7f {
+				return -1
+			}
+			return r
+		}, strings.TrimSpace(v))
+		if v == "" {
+			return empty
+		}
+		if r := []rune(v); len(r) > 64 {
+			v = string(r[:64]) + "…"
+		}
+		return v
+	}
+	return clean(s.App, "?") + "@" + clean(s.User, "?")
 }
 
 // pgRestore накатывает архив pg_dump -Fc в database.
