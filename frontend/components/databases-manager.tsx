@@ -326,7 +326,7 @@ export function DatabasesManager({
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span className="inline-flex cursor-help items-center gap-1">
-                          Расписание (cron)
+                          Расписание
                           <Info className="size-3.5 text-muted-foreground" />
                         </span>
                       </TooltipTrigger>
