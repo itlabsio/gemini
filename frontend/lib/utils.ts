@@ -12,7 +12,7 @@ export function cn(...inputs: ClassValue[]) {
  * в SSR/гидрации; браузерный пояс подставляет <LocalDateTime> после монтирования.
  */
 /** Сколько последних прогонов базы показывает полоска истории в таблице баз. */
-export const RUN_HISTORY_SLOTS = 20;
+export const RUN_HISTORY_SLOTS = 15;
 
 export function fmtDateTime(ts?: string | null, opts?: { utc?: boolean }): string {
   if (!ts) return "—";
