@@ -186,18 +186,20 @@ function MappingRow({
   return (
     <TableRow>
       <TableCell>
-        <div className="flex items-center gap-2">
-          <span className="font-medium">{candidate.db_name}</span>
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{candidate.db_name}</span>
+            {candidate.enabled === false && (
+              <Badge
+                variant="outline"
+                className="text-muted-foreground"
+                title="На Source бэкап этой базы выключен — новых дампов не будет, пока его не включат"
+              >
+                бэкап выключен
+              </Badge>
+            )}
+          </div>
           <DbSize bytes={candidate.size_bytes} />
-          {candidate.enabled === false && (
-            <Badge
-              variant="outline"
-              className="text-muted-foreground"
-              title="На Source бэкап этой базы выключен — новых дампов не будет, пока его не включат"
-            >
-              бэкап выключен
-            </Badge>
-          )}
         </div>
       </TableCell>
       <TableCell>

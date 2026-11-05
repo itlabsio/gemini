@@ -428,14 +428,16 @@ function Row({
     // Удалённую базу приглушаем целиком, кроме кнопки «Удалить» в последней колонке.
     <TableRow className={cn(!db.present && "[&>td:not(:last-child)]:opacity-50")}>
       <TableCell>
-        <div className="flex items-center gap-2">
-          <span className="font-medium">{db.db_name}</span>
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{db.db_name}</span>
+            {!db.present && (
+              <Badge variant="outline" className="text-muted-foreground">
+                удалена
+              </Badge>
+            )}
+          </div>
           <DbSize bytes={db.size_bytes} />
-          {!db.present && (
-            <Badge variant="outline" className="text-muted-foreground">
-              удалена
-            </Badge>
-          )}
         </div>
       </TableCell>
 
