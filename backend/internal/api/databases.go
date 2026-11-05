@@ -55,9 +55,11 @@ func (s *Server) patchDatabase(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "schedule_cron is not used on target head")
 			return
 		}
-		if *req.ScheduleCron != "" && !validCron(*req.ScheduleCron) {
-			writeError(w, http.StatusBadRequest, "schedule_cron must have 5 fields")
-			return
+		if *req.ScheduleCron != "" {
+			if err := validCron(*req.ScheduleCron); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid schedule_cron: "+err.Error())
+				return
+			}
 		}
 	}
 	if req.StorageType != nil && *req.StorageType != "" &&

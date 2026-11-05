@@ -21,3 +21,18 @@ func TestKeyUnderPrefix(t *testing.T) {
 		}
 	}
 }
+
+func TestValidCron(t *testing.T) {
+	ok := []string{"0 0 * * *", "40 0 * * *", "*/15 * * * *", "0 3 * * 1-5", " 0 23 * * * ", "@daily"}
+	bad := []string{"0 40 * * *", "60 0 * * *", "0 0 32 * *", "0 0 * 13 *", "0 0 * *", "0 0 * * * *", "CRON_TZ=UTC 0 0 * * *", "TZ=UTC 0 0 * * *", "foo"}
+	for _, e := range ok {
+		if err := validCron(e); err != nil {
+			t.Errorf("validCron(%q) = %v, want nil", e, err)
+		}
+	}
+	for _, e := range bad {
+		if err := validCron(e); err == nil {
+			t.Errorf("validCron(%q) = nil, want error", e)
+		}
+	}
+}

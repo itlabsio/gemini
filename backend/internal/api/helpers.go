@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/robfig/cron/v3"
+
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/auth"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/storage"
 )
@@ -23,9 +25,15 @@ func ctxIdentity(r *http.Request) (string, bool) {
 	return id.Subject, true
 }
 
-// validCron грубо проверяет, что в cron-выражении ровно 5 полей.
-func validCron(expr string) bool {
-	return len(strings.Fields(strings.TrimSpace(expr))) == 5
+// validCron проверяет cron-выражение тем же парсером, что и kube-apiserver
+// (robfig/cron/v3, стандартные 5 полей). TZ=/CRON_TZ= запрещены: таймзона
+// задаётся spec.timeZone CronJob'а, и apiserver такое расписание отклонит.
+func validCron(expr string) error {
+	if strings.Contains(expr, "TZ") {
+		return errors.New("timezone prefix is not allowed")
+	}
+	_, err := cron.ParseStandard(strings.TrimSpace(expr))
+	return err
 }
 
 // keyUnderPrefix проверяет, что ключ S3 лежит строго внутри префикса сопоставления.
