@@ -25,6 +25,10 @@ const buttonVariants = cva(
         secondary:
           "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/70",
         ghost: "hover:bg-accent hover:text-accent-foreground",
+        // Опасное действие в строке таблицы: приглушено, пока на него не наведут.
+        "ghost-destructive":
+          "text-muted-foreground hover:bg-destructive/10 hover:text-destructive " +
+          "focus-visible:text-destructive focus-visible:ring-destructive/40",
         link: "text-foreground underline-offset-4 hover:underline",
       },
       size: {
@@ -32,6 +36,7 @@ const buttonVariants = cva(
         sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5 text-xs",
         lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
         icon: "size-9",
+        "icon-sm": "size-8",
       },
     },
     defaultVariants: {

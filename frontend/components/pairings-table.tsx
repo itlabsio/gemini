@@ -96,8 +96,9 @@ export function PairingsTable({
                   <TableCell className="text-right">
                     {p.status === "active" ? (
                       <Button
-                        variant="ghost"
-                        size="icon"
+                        variant="ghost-destructive"
+                        size="icon-sm"
+                        title="Разорвать связь"
                         aria-label="Разорвать связь"
                         onClick={() => setTarget(p)}
                       >
@@ -105,8 +106,9 @@ export function PairingsTable({
                       </Button>
                     ) : (
                       <Button
-                        variant="ghost"
-                        size="icon"
+                        variant="ghost-destructive"
+                        size="icon-sm"
+                        title="Удалить связь"
                         aria-label="Удалить связь"
                         onClick={() => setTarget(p)}
                       >

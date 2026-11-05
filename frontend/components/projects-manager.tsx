@@ -133,8 +133,8 @@ export function ProjectsManager({ projects }: { projects: Project[] }) {
                   <TableCell className="text-right whitespace-nowrap">
                     {p.managed_by === "terraform" && (
                       <Button
-                        variant="ghost"
-                        size="icon"
+                        variant="ghost-destructive"
+                        size="icon-sm"
                         aria-label="Снять метку Terraform"
                         title="Снять метку Terraform"
                         disabled={pending}
@@ -144,9 +144,10 @@ export function ProjectsManager({ projects }: { projects: Project[] }) {
                       </Button>
                     )}
                     <Button
-                      variant="ghost"
-                      size="icon"
+                      variant="ghost-destructive"
+                      size="icon-sm"
                       aria-label="Удалить"
+                      title="Удалить проект"
                       disabled={p.instance_count > 0}
                       onClick={() => setToDelete(p)}
                     >

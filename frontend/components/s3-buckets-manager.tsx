@@ -179,7 +179,8 @@ export function S3BucketsManager({ buckets, headRole }: { buckets: S3Bucket[]; h
                     <Button
                       variant="ghost"
                       size="icon"
-                      aria-label="Проверить доступ"
+                      aria-label="Проверить доступность"
+                      title="Проверить доступность"
                       disabled={!b.enabled || testing !== null}
                       onClick={() => test(b)}
                     >
@@ -191,14 +192,16 @@ export function S3BucketsManager({ buckets, headRole }: { buckets: S3Bucket[]; h
                           variant="ghost"
                           size="icon"
                           aria-label="Изменить"
+                          title="Изменить бакет"
                           onClick={() => setEditing({ id: b.id, form: payloadOf(b) })}
                         >
                           <Pencil />
                         </Button>
                         <Button
-                          variant="ghost"
+                          variant="ghost-destructive"
                           size="icon"
                           aria-label="Удалить"
+                          title="Удалить бакет"
                           onClick={() => setToDelete(b)}
                         >
                           <Trash2 />
