@@ -54,6 +54,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { DbSize } from "@/components/db-size";
 
 interface Props {
   instanceId: string;
@@ -429,6 +430,7 @@ function Row({
       <TableCell>
         <div className="flex items-center gap-2">
           <span className="font-medium">{db.db_name}</span>
+          <DbSize bytes={db.size_bytes} />
           {!db.present && (
             <Badge variant="outline" className="text-muted-foreground">
               удалена

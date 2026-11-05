@@ -41,7 +41,7 @@ func TestListDatabasesHidesExcluded(t *testing.T) {
 
 	// Все базы уже в таблице (первый discovery до настройки исключений).
 	for _, name := range []string{"postgres", "app", "billing", "audit"} {
-		if _, err := s.SyncDiscovered(ctx, inst.ID, []string{name}, 0); err != nil {
+		if _, err := s.SyncDiscovered(ctx, inst.ID, []string{name}, nil, 0); err != nil {
 			t.Fatalf("seed %s: %v", name, err)
 		}
 	}
@@ -82,7 +82,7 @@ func TestDatabaseCredentialsRoundTrip(t *testing.T) {
 		t.Fatalf("create instance: %v", err)
 	}
 	t.Cleanup(func() { _ = s.DeleteInstance(ctx, inst.ID) })
-	dbs, err := s.SyncDiscovered(ctx, inst.ID, []string{"app"}, 0)
+	dbs, err := s.SyncDiscovered(ctx, inst.ID, []string{"app"}, nil, 0)
 	if err != nil || len(dbs) != 1 {
 		t.Fatalf("sync: %v %v", dbs, err)
 	}
@@ -119,5 +119,49 @@ func TestDatabaseCredentialsRoundTrip(t *testing.T) {
 	}
 	if d, _ := s.GetDatabase(ctx, id); d == nil || d.RestoreUsername != "" {
 		t.Fatalf("after delete restore_username = %+v, want empty", d)
+	}
+}
+
+// Размер базы из discovery: пишется вместе с временем замера, а если очередной
+// discovery размер не прочитал — прежнее значение остаётся.
+func TestSyncDiscoveredSizes(t *testing.T) {
+	s, ctx := testStore(t)
+
+	inst, err := s.CreateInstance(ctx, InstanceInput{
+		Role: model.InstanceSource, Name: "sizetest", Host: "db.example", Port: 5432,
+		SSLMode: "require", AuthType: model.AuthPlain, PlainUsername: "u", PlainPassword: "p",
+	}, "tester@example.com")
+	if err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
+	t.Cleanup(func() { _ = s.DeleteInstance(ctx, inst.ID) })
+
+	sizeOf := func(dbs []model.Database) map[string]*int64 {
+		out := map[string]*int64{}
+		for _, d := range dbs {
+			if (d.SizeBytes == nil) != (d.SizeUpdatedAt == nil) {
+				t.Fatalf("%s: size_bytes и size_updated_at должны быть заданы вместе", d.DBName)
+			}
+			out[d.DBName] = d.SizeBytes
+		}
+		return out
+	}
+
+	dbs, err := s.SyncDiscovered(ctx, inst.ID, []string{"app", "billing"}, map[string]int64{"app": 1 << 20}, 0)
+	if err != nil {
+		t.Fatalf("sync 1: %v", err)
+	}
+	got := sizeOf(dbs)
+	if got["app"] == nil || *got["app"] != 1<<20 || got["billing"] != nil {
+		t.Fatalf("sync 1: sizes = %v", got)
+	}
+
+	dbs, err = s.SyncDiscovered(ctx, inst.ID, []string{"app", "billing"}, map[string]int64{"billing": 42}, 0)
+	if err != nil {
+		t.Fatalf("sync 2: %v", err)
+	}
+	got = sizeOf(dbs)
+	if got["app"] == nil || *got["app"] != 1<<20 || got["billing"] == nil || *got["billing"] != 42 {
+		t.Fatalf("sync 2: sizes = %v (app должен сохранить прежний размер)", got)
 	}
 }

@@ -12,13 +12,13 @@ import (
 // databaseCols ссылается на алиас d: все выборки идут FROM databases d. Пароль
 // restore сюда не попадает НИКОГДА — он читается лишь DatabaseCredentials().
 const databaseCols = `d.id, d.instance_id, d.db_name, d.enabled, d.schedule_cron, d.storage_type,
-	d.storage_size, d.external_id, d.present, d.created_at, d.updated_at,
+	d.storage_size, d.external_id, d.present, d.size_bytes, d.size_updated_at, d.created_at, d.updated_at,
 	COALESCE((SELECT c.username FROM database_credentials c WHERE c.database_id = d.id), '')`
 
 func scanDatabase(row pgx.Row) (*model.Database, error) {
 	var d model.Database
 	err := row.Scan(&d.ID, &d.InstanceID, &d.DBName, &d.Enabled, &d.ScheduleCron,
-		&d.StorageType, &d.StorageSize, &d.ExternalID, &d.Present, &d.CreatedAt, &d.UpdatedAt,
+		&d.StorageType, &d.StorageSize, &d.ExternalID, &d.Present, &d.SizeBytes, &d.SizeUpdatedAt, &d.CreatedAt, &d.UpdatedAt,
 		&d.RestoreUsername)
 	if err != nil {
 		return nil, mapErr(err)
@@ -105,9 +105,10 @@ func (s *Store) GetDatabaseByExternalID(ctx context.Context, externalID string) 
 
 // SyncDiscovered синхронизирует список баз инстанса с результатом discovery:
 // добавляет новые (enabled=false), помечает исчезнувшие present=false,
-// обновляет server_version_num инстанса (если discovery его прочитал),
-// возвращает актуальный список.
-func (s *Store) SyncDiscovered(ctx context.Context, instanceID string, dbNames []string, serverVersionNum int) ([]model.Database, error) {
+// обновляет server_version_num инстанса (если discovery его прочитал) и размеры
+// баз из sizes (нет базы в sizes → прежний размер остаётся), возвращает
+// актуальный список.
+func (s *Store) SyncDiscovered(ctx context.Context, instanceID string, dbNames []string, sizes map[string]int64, serverVersionNum int) ([]model.Database, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -123,11 +124,18 @@ func (s *Store) SyncDiscovered(ctx context.Context, instanceID string, dbNames [
 	}
 
 	for _, name := range dbNames {
+		var size *int64
+		if v, ok := sizes[name]; ok {
+			size = &v
+		}
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO databases (instance_id, db_name, present)
-			VALUES ($1, $2, TRUE)
-			ON CONFLICT (instance_id, db_name) DO UPDATE SET present = TRUE`,
-			instanceID, name); err != nil {
+			INSERT INTO databases (instance_id, db_name, present, size_bytes, size_updated_at)
+			VALUES ($1, $2, TRUE, $3::bigint, CASE WHEN $3::bigint IS NULL THEN NULL ELSE now() END)
+			ON CONFLICT (instance_id, db_name) DO UPDATE SET
+				present = TRUE,
+				size_bytes = COALESCE(EXCLUDED.size_bytes, databases.size_bytes),
+				size_updated_at = COALESCE(EXCLUDED.size_updated_at, databases.size_updated_at)`,
+			instanceID, name, size); err != nil {
 			return nil, err
 		}
 	}

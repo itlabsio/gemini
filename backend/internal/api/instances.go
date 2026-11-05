@@ -348,7 +348,7 @@ func (s *Server) discoverInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	names := discovery.Filter(res.Databases, inst.ExcludedDatabases)
-	dbs, err := s.d.Store.SyncDiscovered(r.Context(), id, names, res.ServerVersionNum)
+	dbs, err := s.d.Store.SyncDiscovered(r.Context(), id, names, res.Sizes, res.ServerVersionNum)
 	if err != nil {
 		writeStoreError(w, err)
 		return

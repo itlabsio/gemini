@@ -28,7 +28,7 @@ func TestRunsProjectScope(t *testing.T) {
 			_ = s.DeleteInstance(ctx, inst.ID)
 			_, _ = s.pool.Exec(ctx, `DELETE FROM projects WHERE name = $1`, proj)
 		})
-		dbs, err := s.SyncDiscovered(ctx, inst.ID, []string{"app"}, 0)
+		dbs, err := s.SyncDiscovered(ctx, inst.ID, []string{"app"}, nil, 0)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -18,7 +18,7 @@ func TestRecentRunsByInstance(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = s.DeleteInstance(ctx, inst.ID) })
 
-	dbs, err := s.SyncDiscovered(ctx, inst.ID, []string{"app", "billing"}, 0)
+	dbs, err := s.SyncDiscovered(ctx, inst.ID, []string{"app", "billing"}, nil, 0)
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}

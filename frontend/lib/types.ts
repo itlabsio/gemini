@@ -49,6 +49,9 @@ export interface Database {
   restore_username?: string;
   external_id: string;
   present: boolean;
+  /** pg_database_size на момент последнего discovery; нет → размер не известен. */
+  size_bytes?: number;
+  size_updated_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -200,6 +203,8 @@ export interface Candidate {
   s3_prefix: string;
   /** Включён ли бэкап базы на Source (информативно: restore решает галка на Target). */
   enabled: boolean;
+  /** Примерный размер базы на Source (последний discovery там). */
+  size_bytes?: number;
 }
 
 export type ProjectRole = "viewer" | "operator" | "admin";

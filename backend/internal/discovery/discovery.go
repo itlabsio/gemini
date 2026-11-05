@@ -111,6 +111,9 @@ type Result struct {
 	// ServerVersionNum — server_version_num сервера (напр. 170004 = PG 17.4).
 	// 0 → прочитать не удалось (не критично для discovery).
 	ServerVersionNum int
+	// Sizes — pg_database_size по имени базы. Пустая → размеры прочитать не
+	// удалось (не критично: список баз важнее, ошибку глотаем).
+	Sizes map[string]int64
 }
 
 // connectHint — подсказка к ошибке подключения по её реальной причине: базы нет
@@ -176,7 +179,40 @@ func ListDatabases(ctx context.Context, t Target) (*Result, error) {
 		}
 		res.Databases = append(res.Databases, n)
 	}
-	return &res, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	res.Sizes = databaseSizes(ctx, conn, res.Databases)
+	return &res, nil
+}
+
+// databaseSizes читает pg_database_size отдельным запросом: функция требует
+// CONNECT (или pg_read_all_stats) и при гонке с DROP DATABASE падает — тогда
+// discovery всё равно должен вернуть список баз, просто без размеров.
+func databaseSizes(ctx context.Context, conn *pgx.Conn, names []string) map[string]int64 {
+	if len(names) == 0 {
+		return nil
+	}
+	rows, err := conn.Query(ctx, `
+		SELECT datname, pg_database_size(oid) FROM pg_database
+		WHERE datname = ANY($1)`, names)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	out := make(map[string]int64, len(names))
+	for rows.Next() {
+		var n string
+		var size int64
+		if err := rows.Scan(&n, &size); err != nil {
+			return nil
+		}
+		out[n] = size
+	}
+	if rows.Err() != nil {
+		return nil
+	}
+	return out
 }
 
 // ListRoles возвращает имена ролей кластера, кроме встроенных pg_* — кандидаты

@@ -25,6 +25,8 @@ type candidate struct {
 	// Enabled — включён ли бэкап базы на Source. Только для информации в UI:
 	// восстанавливать или нет, решает галка целевой базы на Target.
 	Enabled bool `json:"enabled"`
+	// SizeBytes — примерный размер базы на Source (последний discovery), для UI.
+	SizeBytes *int64 `json:"size_bytes,omitempty"`
 	// Project — проект инстанса Source, которому принадлежит база. Target
 	// сверяет его с проектом своего инстанса (RBAC) и не доверяет ответу без поля.
 	Project string `json:"project"`
@@ -62,9 +64,10 @@ func (s *Server) peerListDatabases(w http.ResponseWriter, r *http.Request) {
 			ExternalID: d.ExternalID,
 			DBName:     d.DBName,
 			// см. operator.ensureCronJob: dump-Job получает S3_PREFIX = inst.Name/db.DBName
-			S3Prefix: name + "/" + d.DBName,
-			Enabled:  d.Enabled,
-			Project:  project,
+			S3Prefix:  name + "/" + d.DBName,
+			Enabled:   d.Enabled,
+			SizeBytes: d.SizeBytes,
+			Project:   project,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)

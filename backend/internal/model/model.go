@@ -141,6 +141,11 @@ type Database struct {
 	// Present=false — база пропала из discovery, но запись оставлена для истории.
 	Present bool `json:"present"`
 
+	// SizeBytes — pg_database_size на момент последнего discovery, который
+	// смог его прочитать (SizeUpdatedAt). nil → размер ещё не известен.
+	SizeBytes     *int64     `json:"size_bytes,omitempty"`
+	SizeUpdatedAt *time.Time `json:"size_updated_at,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

@@ -34,7 +34,7 @@ func TestRestoreMappingSelection(t *testing.T) {
 		_ = s.DeleteInstance(ctx, inst.ID)
 	})
 
-	if _, err := s.SyncDiscovered(ctx, inst.ID, []string{"auto", "manual"}, 0); err != nil {
+	if _, err := s.SyncDiscovered(ctx, inst.ID, []string{"auto", "manual"}, nil, 0); err != nil {
 		t.Fatalf("discover: %v", err)
 	}
 	dbs, err := s.ListDatabases(ctx, inst.ID)

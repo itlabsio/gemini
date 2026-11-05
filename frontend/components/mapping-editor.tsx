@@ -10,6 +10,7 @@ import {
   saveMappingAction,
 } from "@/app/mapping/actions";
 import { Badge } from "@/components/ui/badge";
+import { DbSize } from "@/components/db-size";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -187,6 +188,7 @@ function MappingRow({
       <TableCell>
         <div className="flex items-center gap-2">
           <span className="font-medium">{candidate.db_name}</span>
+          <DbSize bytes={candidate.size_bytes} />
           {candidate.enabled === false && (
             <Badge
               variant="outline"

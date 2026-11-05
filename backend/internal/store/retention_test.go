@@ -18,7 +18,7 @@ func TestPruneRunsKeepsLatestAndActive(t *testing.T) {
 		t.Fatalf("create instance: %v", err)
 	}
 	t.Cleanup(func() { _ = s.DeleteInstance(ctx, inst.ID) })
-	dbs, err := s.SyncDiscovered(ctx, inst.ID, []string{"app"}, 0)
+	dbs, err := s.SyncDiscovered(ctx, inst.ID, []string{"app"}, nil, 0)
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}
