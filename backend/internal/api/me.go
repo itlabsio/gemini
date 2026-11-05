@@ -55,5 +55,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		"head_role":       s.d.Cfg.Role,
 		"vault_enabled":   s.d.Cfg.Vault.Enabled,
 		"head_public_key": headPub,
+		// Таймзона CronJob'ов (spec.timeZone) — подсказка к полю расписания.
+		"job_timezone": s.d.Cfg.JobTimezone,
 	})
 }

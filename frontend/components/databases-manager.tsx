@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { ChevronRight, Pause, Play, RefreshCw, ScrollText } from "lucide-react";
+import { ChevronRight, Info, Pause, Play, RefreshCw, ScrollText } from "lucide-react";
 import type { BackupRun, Database, RestoreMode } from "@/lib/types";
 import {
   activeRunsAction,
@@ -66,6 +66,8 @@ interface Props {
   /** Тип тома из настроек ("" — не загрузились). */
   defaultStorageType: string;
   headRole: "source" | "target";
+  /** Часовой пояс расписаний CronJob — в подсказке к колонке cron. */
+  jobTimezone?: string;
   /** Стратегия restore инстанса (только target). */
   restoreMode?: RestoreMode;
   /** Target: restore в базы инстанса разрешён (предохранитель superuser'а). */
@@ -122,6 +124,7 @@ export function DatabasesManager({
   defaultStorageSize,
   defaultStorageType,
   headRole,
+  jobTimezone,
   restoreMode,
   restorable = true,
   canEdit,
@@ -318,7 +321,34 @@ export function DatabasesManager({
               <TableRow>
                 <TableHead>База</TableHead>
                 <TableHead>{isTarget ? "Автовосстановление" : "Бэкап"}</TableHead>
-                {headRole === "source" && <TableHead>Расписание (cron)</TableHead>}
+                {headRole === "source" && (
+                  <TableHead>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex cursor-help items-center gap-1">
+                          Расписание (cron)
+                          <Info className="size-3.5 text-muted-foreground" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent className="text-left">
+                        <ul className="list-disc space-y-0.5 pl-4">
+                          {jobTimezone && <li>Часовой пояс: {jobTimezone}</li>}
+                          <li>
+                            Подробнее о cron:{" "}
+                            <a
+                              href="https://crontab.guru"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline underline-offset-2"
+                            >
+                              crontab.guru
+                            </a>
+                          </li>
+                        </ul>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TableHead>
+                )}
                 {perDB && <TableHead>Пользователь restore</TableHead>}
                 <TableHead>Хранилище дампа</TableHead>
                 <TableHead>Последние запуски</TableHead>

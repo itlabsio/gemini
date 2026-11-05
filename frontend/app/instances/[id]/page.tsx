@@ -190,6 +190,7 @@ export default async function InstanceDetailPage({ params }: Props) {
         defaultStorageSize={settings?.default_storage_size ?? ""}
         defaultStorageType={settings?.default_storage_type ?? ""}
         headRole={me.head_role}
+        jobTimezone={me.job_timezone}
         restoreMode={instance.restore_mode}
         restorable={instance.restorable}
         canEdit={can(me, instance.project, "admin")}

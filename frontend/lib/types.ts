@@ -232,6 +232,8 @@ export interface Me {
   vault_enabled: boolean;
   /** Публичный ключ этой головы (base64 Ed25519) — для сверки при pairing. */
   head_public_key: string;
+  /** Часовой пояс расписаний CronJob (JOB_TIMEZONE), напр. "Europe/Moscow". */
+  job_timezone: string;
 }
 
 /** Запись журнала аудита */
