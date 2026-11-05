@@ -18,8 +18,7 @@ import { RestorableToggle } from "@/components/restorable-toggle";
 import { SslModeBadge } from "@/components/ssl-badge";
 import { SecretBadge } from "@/components/secret-badge";
 import { ManagedBadge } from "@/components/managed-badge";
-import { MiddleTruncate } from "@/components/middle-truncate";
-import { fmtPgVersion, RUN_HISTORY_SLOTS } from "@/lib/utils";
+import { displayHost, fmtPgVersion, RUN_HISTORY_SLOTS } from "@/lib/utils";
 import { can } from "@/lib/rbac";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -112,10 +111,14 @@ export default async function InstanceDetailPage({ params }: Props) {
             <Detail
               label="Хост"
               value={
-                <MiddleTruncate
-                  text={`${instance.host}:${instance.port}`}
-                  className="tabular-nums"
-                />
+                // Порт виден всегда, сжимается только хост.
+                <span
+                  className="flex max-w-full min-w-0 tabular-nums"
+                  title={`${instance.host}:${instance.port}`}
+                >
+                  <span className="truncate">{displayHost(instance.host)}</span>
+                  <span className="flex-none">:{instance.port}</span>
+                </span>
               }
             />
             <Detail

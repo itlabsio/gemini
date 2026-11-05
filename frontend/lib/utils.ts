@@ -59,6 +59,17 @@ export function bytesQuantityError(v: string, opts?: { min?: string }): string |
   return null;
 }
 
+const MDB_SUFFIX = ".mdb.yandexcloud.net";
+
+/**
+ * Хост для показа: общий для всех кластеров Yandex Managed PostgreSQL хвост
+ * .mdb.yandexcloud.net заменяется многоточием (c-abc.rw.mdb.yandexcloud.net →
+ * c-abc.rw…). Полный хост — в title.
+ */
+export function displayHost(host: string): string {
+  return host.endsWith(MDB_SUFFIX) ? host.slice(0, -MDB_SUFFIX.length) + "…" : host;
+}
+
 /** Минимальный размер тома дампа — как k8s.MinWorkDirSize на бэкенде. */
 export const MIN_STORAGE_SIZE = "1Gi";
 
