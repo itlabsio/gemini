@@ -15,7 +15,7 @@ export function SslModeBadge({ mode }: { mode: string }) {
     <Badge
       variant="outline"
       className={cn(
-        "border-transparent font-mono",
+        "border-transparent",
         STYLES[mode] ?? "bg-muted text-muted-foreground",
       )}
     >
