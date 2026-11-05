@@ -8,9 +8,14 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"gl.sdvor.com/devops/docker/gemini/backend/internal/auth"
+	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
 )
 
 func selfSignedPEM(t *testing.T) string {
@@ -78,5 +83,43 @@ func TestValidateStripsRootCertForNonVerifyModes(t *testing.T) {
 	}
 	if in.SSLRootCert == "" {
 		t.Fatal("ssl_root_cert must be kept for verify-full")
+	}
+}
+
+// Где лежат креды инстанса (plain-пользователь, координаты Vault), видит только
+// superuser; даже admin проекта получает лишь auth_type.
+func TestRedactCredCoords(t *testing.T) {
+	full := func() model.Instance {
+		return model.Instance{
+			Project: "p", AuthType: model.AuthVault, PlainUsername: "u",
+			VaultPath: "kv/data/x", VaultRole: "r", VaultUsernameKey: "uk", VaultPasswordKey: "pk",
+		}
+	}
+	cases := map[string]struct {
+		id   auth.Identity
+		keep bool
+	}{
+		"superuser": {auth.Identity{Superuser: true}, true},
+		"admin":     {auth.Identity{Projects: map[string]auth.Role{"p": auth.RoleAdmin}}, false},
+		"viewer":    {auth.Identity{Projects: map[string]auth.Role{"p": auth.RoleViewer}}, false},
+	}
+	for name, c := range cases {
+		r := httptest.NewRequest("GET", "/", nil)
+		r = r.WithContext(auth.WithIdentity(r.Context(), c.id))
+		inst := full()
+		redactCredCoords(r, &inst)
+		if c.keep {
+			if !reflect.DeepEqual(inst, full()) {
+				t.Errorf("%s: координаты не должны прятаться: %+v", name, inst)
+			}
+			continue
+		}
+		if inst.PlainUsername != "" || inst.VaultPath != "" || inst.VaultRole != "" ||
+			inst.VaultUsernameKey != "" || inst.VaultPasswordKey != "" {
+			t.Errorf("%s: координаты кред утекли: %+v", name, inst)
+		}
+		if inst.AuthType != model.AuthVault {
+			t.Errorf("%s: auth_type должен остаться виден", name)
+		}
 	}
 }

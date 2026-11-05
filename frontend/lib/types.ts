@@ -19,6 +19,7 @@ export interface Instance {
   host: string;
   port: number;
   auth_type: AuthType;
+  /** Где лежат креды (plain-пользователь, координаты Vault) — только для superuser, остальным API их не отдаёт. */
   plain_username?: string;
   vault_path?: string;
   vault_role?: string;

@@ -185,13 +185,15 @@ func (s *Server) defaultInstanceRole() model.InstanceRole {
 	return model.InstanceSource
 }
 
-// redactVaultCoords прячет координаты секрета в Vault от viewer'а проекта: путь и
-// роль описывают устройство секрет-хранилища, наблюдателю журналов они не нужны.
-// operator/admin проекта и superuser видят их — для диагностики и правки инстанса.
-func redactVaultCoords(r *http.Request, inst *model.Instance) {
-	if identity(r).Can(inst.Project, auth.RoleOperator) {
+// redactCredCoords прячет от всех, кроме superuser, где лежат креды инстанса:
+// пользователя plain и координаты секрета в Vault (путь, роль, ключи). Менять их
+// может только superuser (PUT /instances/{id}), остальным это лишняя информация
+// об устройстве секрет-хранилища. Тип секрета (auth_type) остаётся виден.
+func redactCredCoords(r *http.Request, inst *model.Instance) {
+	if identity(r).Superuser {
 		return
 	}
+	inst.PlainUsername = ""
 	inst.VaultPath = ""
 	inst.VaultRole = ""
 	inst.VaultUsernameKey = ""
@@ -210,7 +212,7 @@ func (s *Server) listInstances(w http.ResponseWriter, r *http.Request) {
 		if !id.Can(it.Project, auth.RoleViewer) {
 			continue
 		}
-		redactVaultCoords(r, &it)
+		redactCredCoords(r, &it)
 		visible = append(visible, it)
 	}
 	writeJSON(w, http.StatusOK, visible)
@@ -221,7 +223,7 @@ func (s *Server) getInstance(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	redactVaultCoords(r, inst)
+	redactCredCoords(r, inst)
 	writeJSON(w, http.StatusOK, inst)
 }
 

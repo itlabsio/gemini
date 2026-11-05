@@ -65,7 +65,8 @@ type Instance struct {
 	// Пусто в API-ответе для source-инстансов. См. RestoreMode.
 	RestoreMode RestoreMode `json:"restore_mode,omitempty"`
 
-	// PlainUsername виден в API; пароль наружу не отдаётся никогда.
+	// PlainUsername в API видит только superuser (api.redactCredCoords); пароль
+	// наружу не отдаётся никогда.
 	PlainUsername string `json:"plain_username,omitempty"`
 
 	VaultPath string `json:"vault_path,omitempty"`

@@ -173,22 +173,7 @@ export default async function InstanceDetailPage({ params }: Props) {
               )}
             <Detail
               label="Секрет"
-              value={
-                <div className="flex min-w-0 flex-col gap-1">
-                  <SecretBadge authType={instance.auth_type} />
-                  {instance.auth_type === "vault" && instance.vault_path && (
-                    <MiddleTruncate
-                      text={instance.vault_path}
-                      className="font-mono text-xs text-muted-foreground"
-                    />
-                  )}
-                  {instance.auth_type === "plain" && instance.plain_username && (
-                    <span className="truncate font-mono text-xs text-muted-foreground">
-                      {instance.plain_username}
-                    </span>
-                  )}
-                </div>
-              }
+              value={<SecretBadge authType={instance.auth_type} />}
             />
           </dl>
         </CardContent>
