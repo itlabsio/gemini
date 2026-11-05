@@ -26,9 +26,9 @@ const MODE_WARNING: Record<RestoreMode, string> = {
   recreate:
     "База будет пересоздана из дампа: текущая переименовывается и удаляется после успешного наката.",
   in_place:
-    "Объекты из дампа перезапишут существующие (pg_restore --clean): данные базы заменятся содержимым дампа.",
+    "Данные в текущей базе будут перезаписаны содержимым дампа.",
   in_place_per_db:
-    "Объекты из дампа перезапишут существующие (pg_restore --clean): данные базы заменятся содержимым дампа.",
+    "Данные в текущей базе будут перезаписаны содержимым дампа.",
 };
 
 interface Props {
@@ -169,7 +169,7 @@ export function RestoreButton({
         )}
 
         {selected && (
-          <Alert variant="destructive">
+          <Alert variant="warning">
             {MODE_WARNING[restoreMode ?? "recreate"]}
             {selected !== newestKey && " Выбран не самый свежий дамп."}
           </Alert>
@@ -180,7 +180,7 @@ export function RestoreButton({
             Отмена
           </Button>
           <Button
-            variant="destructive"
+            variant="info"
             onClick={onRestore}
             disabled={!selected || starting || loading}
           >

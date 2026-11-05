@@ -12,6 +12,7 @@ const alertVariants = cva(
         destructive:
           "border-destructive/40 bg-destructive/8 text-destructive dark:bg-destructive/15",
         info: "border-info/40 bg-info/8 text-foreground dark:bg-info/15",
+        warning: "border-warning/50 bg-warning/10 text-foreground dark:bg-warning/15 [&>svg]:text-warning",
       },
     },
     defaultVariants: { variant: "default" },
@@ -24,7 +25,7 @@ function Alert({
   children,
   ...props
 }: ComponentProps<"div"> & VariantProps<typeof alertVariants>) {
-  const Icon = variant === "destructive" ? CircleAlert : Info;
+  const Icon = variant === "destructive" || variant === "warning" ? CircleAlert : Info;
   return (
     <div
       role="alert"
