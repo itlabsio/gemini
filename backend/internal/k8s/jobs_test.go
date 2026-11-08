@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -135,5 +136,18 @@ func TestPodNotStarted(t *testing.T) {
 				t.Errorf("PodNotStarted = (%v, %q), want (%v, ~%q)", stuck, reason, tc.wantStuck, tc.wantReason)
 			}
 		})
+	}
+}
+
+func TestJobStatusReady(t *testing.T) {
+	one, zero := int32(1), int32(0)
+	for _, tc := range []struct {
+		ready *int32
+		want  bool
+	}{{nil, false}, {&zero, false}, {&one, true}} {
+		j := &batchv1.Job{Status: batchv1.JobStatus{Ready: tc.ready}}
+		if got := jobStatus(j).Ready; got != tc.want {
+			t.Errorf("Ready(%v) = %v, want %v", tc.ready, got, tc.want)
+		}
 	}
 }

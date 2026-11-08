@@ -34,6 +34,8 @@ type JobStatus struct {
 	Phase      Phase
 	Message    string
 	Created    time.Time
+	// Ready — хотя бы один под Job'а готов, то есть старт уже состоялся.
+	Ready bool
 	// Started/Finished — фактические status.startTime и время завершения Job'а
 	// (completionTime; у упавшего — lastTransitionTime условия Failed). nil, пока неизвестны.
 	Started  *time.Time
@@ -318,6 +320,7 @@ func jobStatus(j *batchv1.Job) JobStatus {
 		Trigger:    j.Labels[LabelTrigger],
 		Phase:      PhaseRunning,
 		Created:    j.CreationTimestamp.Time,
+		Ready:      j.Status.Ready != nil && *j.Status.Ready > 0,
 	}
 	if t := j.Status.StartTime; t != nil {
 		st.Started = &t.Time

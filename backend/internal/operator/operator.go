@@ -573,6 +573,9 @@ func (o *Operator) reconcileOnce(ctx context.Context) error {
 	podStartTimeout := time.Duration(-1) // читаем настройку лениво, раз за тик
 	for _, js := range statuses {
 		if js.Phase == k8s.PhaseRunning {
+			if js.Ready {
+				continue // под работает: проверять старт незачем
+			}
 			if podStartTimeout < 0 {
 				podStartTimeout = o.podStartTimeout(ctx)
 			}
