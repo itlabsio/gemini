@@ -206,13 +206,6 @@ func (s *Server) pairingExchange(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	// Дампы, снятые до этого момента, лежат в бакете без .sig — подписываем их
-	// теперь, иначе Target откажется их восстанавливать. Фоново: ответ пиру не ждёт.
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-		s.d.Operator.BackfillSignatures(ctx)
-	}()
 	writeJSON(w, http.StatusOK, pairingExchangeResponse{
 		SourcePublicURL: s.d.Cfg.PublicURL,
 		PublicKey:       base64.StdEncoding.EncodeToString(ownPub),

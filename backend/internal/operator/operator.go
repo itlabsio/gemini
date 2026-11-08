@@ -781,34 +781,17 @@ func (o *Operator) onRunFailed(ctx context.Context, run model.BackupRun, js *k8s
 // приватник в поды не попадает. Подпись асимметричная и самодостаточная — один
 // .sig проверяют все Target'ы; кладётся в каждый бакет, где дамп залит. Бакеты
 // без дампа (заливка туда упала) — нотификация: копия дампа там не появится.
+// Не удалось подписать — тоже нотификация: без .sig Target дамп не восстановит;
+// подпись повторит RetrySignatures.
 func (o *Operator) signDump(ctx context.Context, db *model.Database, run *model.BackupRun) {
 	if run.S3ObjectKey == "" || run.Checksum == "" {
 		return
 	}
-	priv, err := o.store.HeadPrivateKey(ctx)
+	missing, err := o.signCopies(ctx, run)
 	if err != nil {
-		log.Printf("operator: no head key — dump %s left unsigned: %v", run.S3ObjectKey, err)
-		return
-	}
-	extDigest, err := o.dumpExtensionsDigest(ctx, run)
-	if err != nil {
-		log.Printf("operator: dump %s left unsigned: %v", run.S3ObjectKey, err)
-		return
-	}
-	sig := peer.SignArtifact(priv, run.S3ObjectKey, run.Checksum, extDigest)
-	clients, _ := o.buckets.Clients(ctx)
-	var missing []string
-	for _, c := range clients {
-		ready, err := c.ChecksumReady(ctx, run.S3ObjectKey)
-		if err != nil || !ready {
-			missing = append(missing, c.Name())
-			continue
-		}
-		if err := c.PutSignature(ctx, run.S3ObjectKey, sig); err != nil {
-			log.Printf("operator: upload signature for %s: %v", c.Object(run.S3ObjectKey), err)
-			continue
-		}
-		log.Printf("operator: signed dump %s", c.Object(run.S3ObjectKey))
+		log.Printf("operator: dump %s not fully signed: %v", run.S3ObjectKey, err)
+		o.notifyFailure(ctx, o.runEvent(ctx, db, model.KindDump, run.ID,
+			"дамп подписан не полностью, подпись будет повторена: "+err.Error()))
 	}
 	if len(missing) > 0 {
 		o.notifyFailure(ctx, o.runEvent(ctx, db, model.KindDump, run.ID,
@@ -816,10 +799,72 @@ func (o *Operator) signDump(ctx context.Context, db *model.Database, run *model.
 	}
 }
 
+// signCopies подписывает все копии дампа и при полном успехе ставит прогону
+// signed_at. missing — бакеты без дампа: они отметке не мешают, копии там нет.
+// Ошибка — отметка не поставлена, прогон подхватит RetrySignatures.
+func (o *Operator) signCopies(ctx context.Context, run *model.BackupRun) (missing []string, err error) {
+	priv, err := o.store.HeadPrivateKey(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("no head key: %w", err)
+	}
+	extDigest, err := o.dumpExtensionsDigest(ctx, run)
+	if err != nil {
+		return nil, err
+	}
+	// Состав бакетов неполон (БД не ответила) — считать дамп подписанным нельзя.
+	clients, err := o.buckets.Clients(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var errs []error
+	signed := 0
+	for _, c := range clients {
+		present, err := signCopy(ctx, c, priv, run.S3ObjectKey, run.Checksum, extDigest)
+		switch {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("%s: %w", c.Name(), err))
+			if !present {
+				missing = append(missing, c.Name())
+			}
+		case !present:
+			missing = append(missing, c.Name())
+		default:
+			signed++
+		}
+	}
+	if len(errs) > 0 {
+		return missing, errors.Join(errs...)
+	}
+	if signed == 0 {
+		return missing, fmt.Errorf("dump %s is not in any bucket", run.S3ObjectKey)
+	}
+	return missing, o.store.MarkRunSigned(ctx, run.ID)
+}
+
+// signCopy обеспечивает валидную подпись копии дампа в бакете c. present=false —
+// дампа в бакете нет (или это не удалось проверить — тогда ещё и ошибка).
+func signCopy(ctx context.Context, c *storage.Client, priv ed25519.PrivateKey, key, checksum, extDigest string) (present bool, err error) {
+	pub := priv.Public().(ed25519.PublicKey)
+	if sig, err := c.ReadSignature(ctx, key); err == nil && peer.VerifyArtifact(pub, key, checksum, extDigest, sig) {
+		return true, nil // валидная подпись текущим ключом уже есть
+	}
+	ready, err := c.ChecksumReady(ctx, key)
+	if err != nil {
+		return false, err
+	}
+	if !ready {
+		return false, nil
+	}
+	if err := c.PutSignature(ctx, key, peer.SignArtifact(priv, key, checksum, extDigest)); err != nil {
+		return true, fmt.Errorf("upload signature: %w", err)
+	}
+	log.Printf("operator: signed dump %s", c.Object(key))
+	return true, nil
+}
+
 // dumpExtensionsDigest (Source) — digest <key>.extensions для подписи. Считается
 // один раз из первого бакета, где дамп залит (sidecar во всех бакетах один и
-// тот же), и сохраняется в прогоне: BackfillSignatures сверяет подписи по нему,
-// не перечитывая sidecar каждый цикл.
+// тот же), и сохраняется в прогоне: RetrySignatures не перечитывает sidecar.
 func (o *Operator) dumpExtensionsDigest(ctx context.Context, run *model.BackupRun) (string, error) {
 	if run.ExtensionsDigest != "" {
 		return run.ExtensionsDigest, nil
@@ -846,58 +891,34 @@ func (o *Operator) dumpExtensionsDigest(ctx context.Context, run *model.BackupRu
 	return "", fmt.Errorf("read extensions list: %w", errors.Join(errs...))
 }
 
-// signatureBackfillWindow — насколько назад BackfillSignatures ищет неподписанные
-// дампы. Дампы старше этого окна на Target'е всё равно не восстанавливают.
-const signatureBackfillWindow = 30 * 24 * time.Hour
+// signatureRetryWindow — сколько RetrySignatures пытается подписать дамп, у
+// которого нет signed_at. Дальше прогон не рассматривается, чтобы удалённые из
+// бакета дампы не опрашивались вечно.
+const signatureRetryWindow = 48 * time.Hour
 
-// BackfillSignatures (Source) до-подписывает успешные дампы, у которых в бакете
-// ещё нет <key>.sig (дамп завершился раньше, чем сгенерировался ключ головы) или
-// подпись старого формата (HMAC до перехода на Ed25519, Ed25519 v1 без списка
-// расширений). Проходит по всем бакетам, где дамп лежит.
-func (o *Operator) BackfillSignatures(ctx context.Context) {
+// RetrySignatures (Source) до-подписывает дампы без signed_at: подпись сорвалась
+// из-за сбоя S3 или лидер упал между закрытием прогона и signDump. Без этого
+// дамп остался бы без .sig, и Target отказался бы его восстанавливать. В штатном
+// режиме таких прогонов нет, и в S3 цикл не ходит.
+func (o *Operator) RetrySignatures(ctx context.Context) {
 	if !o.cfg.IsSource() {
 		return
 	}
-	clients, _ := o.buckets.Clients(ctx)
-	if len(clients) == 0 {
-		return
-	}
-	priv, err := o.store.HeadPrivateKey(ctx)
+	runs, err := o.store.ListUnsignedDumps(ctx, signatureRetryWindow)
 	if err != nil {
-		log.Printf("operator: signature backfill: no head key: %v", err)
+		log.Printf("operator: signature retry: list dumps: %v", err)
 		return
 	}
-	pub := priv.Public().(ed25519.PublicKey)
-	runs, err := o.store.ListSignableDumps(ctx, signatureBackfillWindow)
-	if err != nil {
-		log.Printf("operator: signature backfill: list dumps: %v", err)
-		return
-	}
-	var signed int
+	var confirmed int
 	for i := range runs {
-		r := &runs[i]
-		extDigest, err := o.dumpExtensionsDigest(ctx, r)
-		if err != nil {
-			continue // дампа нет ни в одном бакете (вычищен retention'ом) — подписывать нечего
+		if _, err := o.signCopies(ctx, &runs[i]); err != nil {
+			log.Printf("operator: signature retry: %s: %v", runs[i].S3ObjectKey, err)
+			continue
 		}
-		for _, c := range clients {
-			if sig, err := c.ReadSignature(ctx, r.S3ObjectKey); err == nil &&
-				peer.VerifyArtifact(pub, r.S3ObjectKey, r.Checksum, extDigest, sig) {
-				continue // валидная подпись текущим ключом уже есть
-			}
-			if ready, err := c.ChecksumReady(ctx, r.S3ObjectKey); err != nil || !ready {
-				continue // дампа в этом бакете нет — подписывать нечего
-			}
-			sig := peer.SignArtifact(priv, r.S3ObjectKey, r.Checksum, extDigest)
-			if err := c.PutSignature(ctx, r.S3ObjectKey, sig); err != nil {
-				log.Printf("operator: signature backfill: put %s: %v", c.Object(r.S3ObjectKey), err)
-				continue
-			}
-			signed++
-		}
+		confirmed++
 	}
-	if signed > 0 {
-		log.Printf("operator: signature backfill signed %d dump copy(ies)", signed)
+	if confirmed > 0 {
+		log.Printf("operator: signature retry confirmed %d dump(s)", confirmed)
 	}
 }
 
@@ -958,7 +979,7 @@ func verifiedDumpIn(ctx context.Context, c *storage.Client, pub ed25519.PublicKe
 		v.Extensions = storage.ParseExtensions(exts)
 	case peer.VerifyArtifactV1(pub, s3Key, sum, sig):
 		// Подпись до v2: дамп подлинный, но список расширений ею не покрыт.
-		// Накатываем без него; Source переподпишет дамп в v2 фоновым backfill'ом.
+		// Накатываем без него.
 		log.Printf("operator: %s has a v1 signature — restoring without its unsigned extensions list", c.Object(s3Key))
 	default:
 		return nil, fmt.Errorf("signature mismatch for %s — refusing to restore", s3Key)

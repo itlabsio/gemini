@@ -292,15 +292,14 @@ func (s *Store) ListActiveRuns(ctx context.Context, minAge time.Duration) ([]mod
 	return out, rows.Err()
 }
 
-// ListSignableDumps возвращает успешные dump-прогоны с уже известными ключом и
-// контрольной суммой за последние since. Источник кандидатов для (до)подписания
-// на Source: дамп мог завершиться раньше, чем появилась активная пара, и остаться
-// без <key>.sig (см. operator.BackfillSignatures).
-func (s *Store) ListSignableDumps(ctx context.Context, since time.Duration) ([]model.BackupRun, error) {
+// ListUnsignedDumps возвращает успешные dump-прогоны за последние since с уже
+// известными ключом и контрольной суммой, подпись которых не подтверждена
+// (signed_at пуст; см. operator.RetrySignatures).
+func (s *Store) ListUnsignedDumps(ctx context.Context, since time.Duration) ([]model.BackupRun, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+runCols+` FROM backup_runs
 		WHERE kind = 'dump' AND status = 'succeeded'
-		  AND s3_object_key <> '' AND checksum <> ''
+		  AND s3_object_key <> '' AND checksum <> '' AND signed_at IS NULL
 		  AND created_at > NOW() - make_interval(secs => $1)
 		ORDER BY created_at DESC`, since.Seconds())
 	if err != nil {
@@ -316,6 +315,12 @@ func (s *Store) ListSignableDumps(ctx context.Context, since time.Duration) ([]m
 		out = append(out, *r)
 	}
 	return out, rows.Err()
+}
+
+// MarkRunSigned отмечает, что все копии дампа прогона подписаны.
+func (s *Store) MarkRunSigned(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE backup_runs SET signed_at = NOW() WHERE id = $1`, id)
+	return err
 }
 
 // RunByEventKey — для идемпотентной обработки повторно пришедшего события.

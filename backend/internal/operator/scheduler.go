@@ -39,23 +39,21 @@ func (o *Operator) RunTemplateReconciler(ctx context.Context) {
 	}
 }
 
-// signatureBackfillInterval — период фонового до-подписания дампов на Source.
-const signatureBackfillInterval = 5 * time.Minute
+// signatureRetryInterval — период повтора несостоявшихся подписей на Source.
+const signatureRetryInterval = 5 * time.Minute
 
-// RunSignatureBackfill (Source) периодически до-подписывает успешные дампы, у
-// которых в бакете ещё нет .sig: дамп мог завершиться раньше, чем появилась
-// активная пара, а Target без подписи откажется его восстанавливать.
-func (o *Operator) RunSignatureBackfill(ctx context.Context) {
+// RunSignatureRetry (Source) периодически вызывает RetrySignatures.
+func (o *Operator) RunSignatureRetry(ctx context.Context) {
 	if !o.cfg.IsSource() {
-		log.Printf("operator: signature backfill disabled (not a source head)")
+		log.Printf("operator: signature retry disabled (not a source head)")
 		return
 	}
 	for {
-		safely("backfillSignatures", func() { o.BackfillSignatures(ctx) })
+		safely("retrySignatures", func() { o.RetrySignatures(ctx) })
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(signatureBackfillInterval + rand.N(templateReconcileJitter)):
+		case <-time.After(signatureRetryInterval + rand.N(templateReconcileJitter)):
 		}
 	}
 }

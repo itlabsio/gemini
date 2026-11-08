@@ -23,6 +23,11 @@ func fakeS3(t *testing.T, objects map[string]string) *storage.Client {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key, ok := strings.CutPrefix(r.URL.Path, "/dumps/")
+		if ok && r.Method == http.MethodPut {
+			objects[key] = "uploaded"
+			w.Header().Set("ETag", `"x"`)
+			return
+		}
 		body, found := objects[key]
 		if !ok || !found {
 			w.Header().Set("Content-Type", "application/xml")
@@ -64,7 +69,7 @@ func keypair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 	return pub, priv
 }
 
-// v2-подпись дампа так, как её ставит Source (signDump/BackfillSignatures).
+// v2-подпись дампа так, как её ставит Source (signDump).
 func signV2(priv ed25519.PrivateKey, key, checksum, extsRaw string, extsPresent bool) string {
 	return peer.SignArtifact(priv, key, checksum, storage.ExtensionsDigest([]byte(extsRaw), extsPresent))
 }
@@ -190,6 +195,38 @@ func TestVerifiedDumpIn(t *testing.T) {
 			}
 			if !slices.Equal(v.Extensions, tc.wantExts) {
 				t.Errorf("extensions = %v, want %v", v.Extensions, tc.wantExts)
+			}
+		})
+	}
+}
+
+func TestSignCopy(t *testing.T) {
+	ctx := context.Background()
+	_, priv := keypair(t)
+	const digest = storage.NoExtensionsDigest
+	valid := peer.SignArtifact(priv, dumpKey, sum, digest)
+	for _, tc := range []struct {
+		name        string
+		objects     map[string]string
+		wantPresent bool
+		wantUpload  bool
+	}{
+		{"valid signature is left alone", map[string]string{dumpKey + ".sha256": sum, dumpKey + ".sig": valid}, true, false},
+		{"missing signature is uploaded", map[string]string{dumpKey + ".sha256": sum}, true, true},
+		{"foreign signature is replaced", map[string]string{dumpKey + ".sha256": sum, dumpKey + ".sig": "bad"}, true, true},
+		{"no dump in bucket", map[string]string{}, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before := tc.objects[dumpKey+".sig"]
+			present, err := signCopy(ctx, fakeS3(t, tc.objects), priv, dumpKey, sum, digest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if present != tc.wantPresent {
+				t.Errorf("present = %v, want %v", present, tc.wantPresent)
+			}
+			if uploaded := tc.objects[dumpKey+".sig"] != before; uploaded != tc.wantUpload {
+				t.Errorf("uploaded = %v, want %v", uploaded, tc.wantUpload)
 			}
 		})
 	}

@@ -198,7 +198,7 @@ func runServe() {
 			spawn(op.RunPoller)
 		}
 		if cfg.IsSource() {
-			spawn(op.RunSignatureBackfill)
+			spawn(op.RunSignatureRetry)
 		}
 		wg.Wait()
 	}
