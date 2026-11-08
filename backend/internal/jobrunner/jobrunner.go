@@ -45,6 +45,12 @@ type Env struct {
 
 	WorkDir string
 
+	// RunID — прогон Gemini (GEMINI_RUN_ID); у dump'ов по расписанию пуст.
+	RunID string
+	// appName — application_name подключений (PGAPPNAME): по нему сессия прогона
+	// видна в логе PostgreSQL и pg_stat_activity. Пусто — имя утилиты.
+	appName string
+
 	// pgMajor — мажор клиентских утилит для этого прогона, проставляется в
 	// runDump/runRestore после определения версии сервера/архива (см. pgclient.go).
 	// 0 → дефолтные бинари из PATH. Env копируется по значению, поэтому достаточно
@@ -72,6 +78,7 @@ func readEnv() (Env, error) {
 		RestoreMode:    orDefault(os.Getenv("RESTORE_MODE"), "recreate"),
 		ExpectedSHA256: os.Getenv("EXPECTED_SHA256"),
 		WorkDir:        orDefault(os.Getenv("WORKDIR"), "/work"),
+		RunID:          os.Getenv("GEMINI_RUN_ID"),
 	}
 	e.Extensions = parseExtensionsEnv(os.Getenv("EXTENSIONS"))
 	if err := json.Unmarshal([]byte(os.Getenv("S3_BUCKETS")), &e.S3Buckets); err != nil {
@@ -133,6 +140,9 @@ func (e Env) pgEnvAs(database, user, password string) []string {
 	}
 	if database != "" {
 		env = append(env, "PGDATABASE="+database)
+	}
+	if e.appName != "" {
+		env = append(env, "PGAPPNAME="+e.appName)
 	}
 	return env
 }

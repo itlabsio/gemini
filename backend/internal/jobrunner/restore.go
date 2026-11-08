@@ -49,6 +49,9 @@ func runRestore(ctx context.Context, e Env) error {
 	if target == "" || e.S3ObjectKey == "" {
 		return fmt.Errorf("restore: TARGET_DB_NAME and S3_OBJECT_KEY are required")
 	}
+	if e.RunID != "" {
+		e.appName = "gemini-restore-" + e.RunID
+	}
 	dumpPath := filepath.Join(e.WorkDir, "db.dump")
 	if err := downloadDump(ctx, e, dumpPath); err != nil {
 		return err
