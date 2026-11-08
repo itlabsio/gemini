@@ -79,8 +79,8 @@ func readEnv() (Env, error) {
 		ExpectedSHA256: os.Getenv("EXPECTED_SHA256"),
 		WorkDir:        orDefault(os.Getenv("WORKDIR"), "/work"),
 		RunID:          os.Getenv("GEMINI_RUN_ID"),
+		Extensions:     parseExtensionsEnv(os.Getenv("EXTENSIONS")),
 	}
-	e.Extensions = parseExtensionsEnv(os.Getenv("EXTENSIONS"))
 	if err := json.Unmarshal([]byte(os.Getenv("S3_BUCKETS")), &e.S3Buckets); err != nil {
 		return e, fmt.Errorf("jobrunner: bad S3_BUCKETS: %w", err)
 	}

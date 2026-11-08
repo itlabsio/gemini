@@ -70,8 +70,8 @@ func (c *Client) ResolveOwner(ctx context.Context, deploymentName string) error 
 		Kind:               "Deployment",
 		Name:               d.Name,
 		UID:                d.UID,
-		Controller:         boolPtr(false),
-		BlockOwnerDeletion: boolPtr(false),
+		Controller:         new(false),
+		BlockOwnerDeletion: new(false),
 	}
 	c.instanceLabel = d.Labels[LabelInstance]
 	for _, ref := range d.Spec.Template.Spec.ImagePullSecrets {

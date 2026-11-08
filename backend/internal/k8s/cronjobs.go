@@ -146,10 +146,10 @@ func (c *Client) ReconcileCronJob(ctx context.Context, s CronSpec) error {
 	pod := corev1.PodSpec{
 		RestartPolicy:                corev1.RestartPolicyNever,
 		ServiceAccountName:           s.ServiceAccount,
-		AutomountServiceAccountToken: boolPtr(false),
+		AutomountServiceAccountToken: new(false),
 		ImagePullSecrets:             pullSecretRefs(s.ImagePullSecrets),
 		SecurityContext: &corev1.PodSecurityContext{
-			RunAsNonRoot:   boolPtr(true),
+			RunAsNonRoot:   new(true),
 			RunAsUser:      int64Ptr(10001),
 			RunAsGroup:     int64Ptr(10001),
 			FSGroup:        int64Ptr(10001),
@@ -163,8 +163,8 @@ func (c *Client) ReconcileCronJob(ctx context.Context, s CronSpec) error {
 			Env:             env,
 			EnvFrom:         envFrom,
 			SecurityContext: &corev1.SecurityContext{
-				AllowPrivilegeEscalation: boolPtr(false),
-				ReadOnlyRootFilesystem:   boolPtr(true),
+				AllowPrivilegeEscalation: new(false),
+				ReadOnlyRootFilesystem:   new(true),
 				Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
 			},
 			Resources: s.Overrides.ContainerResources(),
