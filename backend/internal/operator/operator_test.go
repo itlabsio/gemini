@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"gl.sdvor.com/devops/docker/gemini/backend/internal/config"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/peer"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/storage"
@@ -229,6 +230,35 @@ func TestSignCopy(t *testing.T) {
 				t.Errorf("uploaded = %v, want %v", uploaded, tc.wantUpload)
 			}
 		})
+	}
+}
+
+func TestDeliverToPeerDoesNotBlock(t *testing.T) {
+	release := make(chan struct{})
+	got := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-release
+		got <- r.URL.Path
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	o := &Operator{
+		peer:      peer.NewClient(config.PeerRetryConfig{MaxAttempts: 1}, "source"),
+		peerSlots: make(chan struct{}, 1),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	o.deliverToPeer(ctx, srv.URL, "/webhook/x", "secret", []byte("{}"))
+	cancel() // запрос пользователя закончился — доставка продолжается
+	release <- struct{}{}
+
+	select {
+	case path := <-got:
+		if path != "/webhook/x" {
+			t.Errorf("path = %q", path)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("webhook was not delivered")
 	}
 }
 

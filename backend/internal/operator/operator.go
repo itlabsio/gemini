@@ -40,6 +40,9 @@ type Operator struct {
 	// warnedForeign — прогоны чужих голов, о которых reaper уже предупредил
 	// (трогает только горутина watcher'а).
 	warnedForeign map[string]bool
+
+	// peerSlots ограничивает число одновременных доставок webhook'ов.
+	peerSlots chan struct{}
 }
 
 // New собирает Operator. k8s может быть nil при локальной разработке —
@@ -51,7 +54,7 @@ func New(cfg *config.Config, st *store.Store, kc *k8s.Client, vc *vault.Client,
 		log.Printf("operator: %v — job pod overrides ignored", err)
 	}
 	return &Operator{cfg: cfg, store: st, k8s: kc, vault: vc, buckets: sc, notifier: nt, peer: pc, baseOverrides: ovr,
-		warnedForeign: map[string]bool{}}
+		warnedForeign: map[string]bool{}, peerSlots: make(chan struct{}, peerDeliveryConcurrency)}
 }
 
 // jobParams разрешает временное хранилище, ресурсы и TTL (секунды) для Job'ов базы:
@@ -1008,9 +1011,7 @@ func (o *Operator) notifyPeerBackupReady(ctx context.Context, db *model.Database
 		if err != nil || sec == "" {
 			continue
 		}
-		if err := o.peer.Post(ctx, p.PeerURL, "/webhook/backup-ready", sec, body); err != nil {
-			log.Printf("operator: backup-ready webhook to %s failed: %v", p.PeerURL, err)
-		}
+		o.deliverToPeer(ctx, p.PeerURL, "/webhook/backup-ready", sec, body)
 	}
 }
 
@@ -1037,9 +1038,30 @@ func (o *Operator) notifyPeerRestoreStatus(ctx context.Context, run *model.Backu
 		"timestamp":                   time.Now().UTC().Format(time.RFC3339),
 		"error_message":               notify.Sanitize(errMsg),
 	})
-	if err := o.peer.Post(ctx, p.PeerURL, "/webhook/restore-status", secret, body); err != nil {
-		log.Printf("operator: restore-status webhook to %s failed: %v", p.PeerURL, err)
-	}
+	o.deliverToPeer(ctx, p.PeerURL, "/webhook/restore-status", secret, body)
+}
+
+const (
+	// peerDeliveryConcurrency — сколько webhook'ов доставляется одновременно.
+	peerDeliveryConcurrency = 8
+	// peerDeliveryTimeout — потолок одной доставки вместе с ретраями.
+	peerDeliveryTimeout = 5 * time.Minute
+)
+
+// deliverToPeer шлёт webhook в фоне: ретраи к недоступному пиру не должны
+// задерживать цикл Watch и запрос отмены прогона. Контекст отвязан от
+// вызывающего — запрос пользователя закончится раньше доставки.
+func (o *Operator) deliverToPeer(ctx context.Context, peerURL, path, secret string, body []byte) {
+	ctx = context.WithoutCancel(ctx)
+	go func() {
+		o.peerSlots <- struct{}{}
+		defer func() { <-o.peerSlots }()
+		ctx, cancel := context.WithTimeout(ctx, peerDeliveryTimeout)
+		defer cancel()
+		if err := o.peer.Post(ctx, peerURL, path, secret, body); err != nil {
+			log.Printf("operator: webhook %s to %s failed: %v", path, peerURL, err)
+		}
+	}()
 }
 
 func mustJSON(v any) []byte {
