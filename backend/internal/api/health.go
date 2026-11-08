@@ -13,7 +13,9 @@ func (s *Server) livez(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// readyz — readiness: доступность своей БД, S3 и (если включён) Vault (см. Deps.Ready).
+// readyz — readiness: доступность своей БД (см. Deps.Ready). S3 и Vault сюда не
+// входят: их сбой общий для всех реплик и не лечится выводом пода из Service —
+// за ними следит operator.RunDependencyChecks.
 func (s *Server) readyz(w http.ResponseWriter, _ *http.Request) {
 	if s.d.Ready != nil {
 		if err := s.d.Ready(); err != nil {

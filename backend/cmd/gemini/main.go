@@ -168,18 +168,10 @@ func runServe() {
 		Vault:        vc,
 		Storage:      sc,
 		Ready: func() error {
-			c, cc := context.WithTimeout(context.Background(), 5*time.Second)
+			c, cc := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cc()
 			if err := pool.Ping(c); err != nil {
 				return fmt.Errorf("db: %w", err)
-			}
-			if err := sc.Ping(c); err != nil {
-				return err
-			}
-			if vc != nil {
-				if err := vc.Ping(c); err != nil {
-					return err
-				}
 			}
 			return nil
 		},
@@ -194,6 +186,7 @@ func runServe() {
 		spawn(op.Watch)
 		spawn(op.RunTemplateReconciler) // CronJob-шаблоны + секреты кред (dump/restore)
 		spawn(op.RunRetention)          // сроки хранения аудита и истории прогонов
+		spawn(op.RunDependencyChecks)   // доступность S3 и Vault — в лог
 		if cfg.IsTarget() {
 			spawn(op.RunPoller)
 		}
