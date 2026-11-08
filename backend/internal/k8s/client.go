@@ -25,9 +25,13 @@ const (
 	LabelRunID      = "gemini.itlabs.io/run-id"
 	LabelDatabaseID = "gemini.itlabs.io/database-id"
 	LabelInstanceID = "gemini.itlabs.io/instance-id"
-	LabelTrigger    = "gemini.itlabs.io/trigger"   // "manual" | "scheduled" (на Job'е)
-	LabelHeadRole   = "gemini.itlabs.io/head-role" // "source" | "target" — голова-владелец объекта
-	ManagedByValue  = "gemini"
+	// LabelInstanceName / LabelDatabaseName — имена инстанса PostgreSQL и базы для
+	// поиска подов в кластере; значения приведены к формату лейбла (см. labelValue).
+	LabelInstanceName = "gemini.itlabs.io/instance"
+	LabelDatabaseName = "gemini.itlabs.io/database"
+	LabelTrigger      = "gemini.itlabs.io/trigger"   // "manual" | "scheduled" (на Job'е)
+	LabelHeadRole     = "gemini.itlabs.io/head-role" // "source" | "target" — голова-владелец объекта
+	ManagedByValue    = "gemini"
 )
 
 // Client — обёртка над clientset под фиксированный namespace.

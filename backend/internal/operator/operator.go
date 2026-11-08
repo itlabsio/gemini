@@ -301,6 +301,7 @@ func (o *Operator) ensureCronJob(ctx context.Context, kind string, db *model.Dat
 		Kind:            kind,
 		DatabaseID:      db.ID,
 		DatabaseName:    db.DBName,
+		InstanceName:    inst.Name,
 		Schedule:        schedule,
 		TimeZone:        o.cfg.JobTimezone,
 		Suspend:         schedule == "",

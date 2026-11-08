@@ -2,12 +2,14 @@ package k8s
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -276,5 +278,41 @@ func TestUpsertSecretOneCallWhenExists(t *testing.T) {
 	}
 	if a := cs.Actions(); len(a) != 1 || !a[0].Matches("update", "secrets") {
 		t.Fatalf("actions = %v", a)
+	}
+}
+
+func TestReconcileCronJobNameLabels(t *testing.T) {
+	ctx := context.Background()
+	cs := fake.NewSimpleClientset()
+	c := &Client{cs: cs, namespace: "gemini"}
+	if err := c.ReconcileCronJob(ctx, CronSpec{
+		Kind: "restore", DatabaseID: "db1", DatabaseName: "e-check", InstanceName: "finance-stage",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cj, err := cs.BatchV1().CronJobs("gemini").Get(ctx, CronJobName("restore", "db1"), metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, labels := range map[string]map[string]string{
+		"cronjob": cj.Labels,
+		"job":     cj.Spec.JobTemplate.Labels,
+		"pod":     cj.Spec.JobTemplate.Spec.Template.Labels,
+	} {
+		if labels[LabelInstanceName] != "finance-stage" || labels[LabelDatabaseName] != "e-check" {
+			t.Errorf("%s labels = %v", name, labels)
+		}
+	}
+}
+
+func TestLabelValue(t *testing.T) {
+	for _, in := range []string{"e-check", "my db/sub", "база_1", "-x-", strings.Repeat("a", 80), strings.Repeat("a", 62) + "/b", "///"} {
+		got := labelValue(in)
+		if errs := validation.IsValidLabelValue(got); len(errs) > 0 {
+			t.Errorf("labelValue(%q) = %q: %v", in, got, errs)
+		}
+	}
+	if got := labelValue("e-check"); got != "e-check" {
+		t.Errorf("valid name changed: %q", got)
 	}
 }

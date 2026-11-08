@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"log"
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -37,6 +38,7 @@ type CronSpec struct {
 	Kind         string // "dump" | "restore"
 	DatabaseID   string
 	DatabaseName string
+	InstanceName string // инстанс PostgreSQL: только для лейбла
 	Schedule     string // пусто → CronJob в suspend (neverSchedule)
 	TimeZone     string
 	Suspend      bool
@@ -100,6 +102,8 @@ func (c *Client) ReconcileCronJob(ctx context.Context, s CronSpec) error {
 	}
 	labels := c.ownerLabels(s.Kind, "", s.DatabaseID, s.InstanceLabel)
 	labels[LabelTrigger] = "scheduled" // Job'ы, которые создаст сам CronJob
+	setNameLabel(labels, LabelInstanceName, s.InstanceName)
+	setNameLabel(labels, LabelDatabaseName, s.DatabaseName)
 	tz := s.TimeZone
 	if tz == "" {
 		tz = "Asia/Yekaterinburg"
@@ -243,6 +247,26 @@ func (c *Client) ReconcileCronJob(ctx context.Context, s CronSpec) error {
 			name, s.DatabaseName, existing.Spec.Schedule, schedule, wasSuspended, suspend)
 	}
 	return nil
+}
+
+// labelValueForbidden — символы, недопустимые в значении лейбла.
+var labelValueForbidden = regexp.MustCompile(`[^A-Za-z0-9._-]`)
+
+// labelValue приводит имя к формату значения лейбла: имя базы PostgreSQL может
+// содержать что угодно. Точный идентификатор базы — в LabelDatabaseID.
+func labelValue(name string) string {
+	v := labelValueForbidden.ReplaceAllString(name, "_")
+	if len(v) > 63 {
+		v = v[:63]
+	}
+	return strings.Trim(v, "._-")
+}
+
+// setNameLabel ставит лейбл с именем, если от имени что-то осталось.
+func setNameLabel(labels map[string]string, key, name string) {
+	if v := labelValue(name); v != "" {
+		labels[key] = v
+	}
 }
 
 // cronJobSpecHash — хэш всего, что задаёт ReconcileCronJob.
