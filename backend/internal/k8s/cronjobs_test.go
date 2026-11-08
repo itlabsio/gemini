@@ -214,3 +214,67 @@ func TestReconcileCronJobDBCredsSecret(t *testing.T) {
 		})
 	}
 }
+
+func TestReconcileCronJobSkipsUnchanged(t *testing.T) {
+	ctx := context.Background()
+	cs := fake.NewSimpleClientset()
+	c := &Client{cs: cs, namespace: "gemini"}
+	spec := CronSpec{Kind: "dump", DatabaseID: "db1", Schedule: "0 3 * * *",
+		Env: map[string]string{"A": "1", "B": "2", "C": "3", "D": "4", "E": "5"}}
+	if err := c.ReconcileCronJob(ctx, spec); err != nil {
+		t.Fatal(err)
+	}
+	listed, err := c.ListManagedCronJobs(ctx)
+	if err != nil || len(listed) != 1 || listed[0].SpecHash == "" {
+		t.Fatalf("listed = %+v, err = %v", listed, err)
+	}
+
+	cs.ClearActions()
+	for range 20 { // случайный порядок обхода Env не должен менять хэш
+		if err := c.ReconcileCronJob(ctx, spec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, a := range cs.Actions() {
+		if a.GetVerb() != "get" {
+			t.Fatalf("unchanged spec: unexpected %s", a.GetVerb())
+		}
+	}
+
+	cs.ClearActions()
+	known := spec
+	known.KnownSpecHash = listed[0].SpecHash
+	if err := c.ReconcileCronJob(ctx, known); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(cs.Actions()); n != 0 {
+		t.Fatalf("known hash: %d API calls, want 0", n)
+	}
+
+	cs.ClearActions()
+	changed := known
+	changed.Schedule = "0 4 * * *"
+	if err := c.ReconcileCronJob(ctx, changed); err != nil {
+		t.Fatal(err)
+	}
+	if !cs.Actions()[len(cs.Actions())-1].Matches("update", "cronjobs") {
+		t.Fatalf("changed spec not updated: %v", cs.Actions())
+	}
+}
+
+func TestUpsertSecretOneCallWhenExists(t *testing.T) {
+	ctx := context.Background()
+	cs := fake.NewSimpleClientset()
+	c := &Client{cs: cs, namespace: "gemini"}
+	data := map[string]string{"PGUSER": "u"}
+	if _, err := c.UpsertCredsSecret(ctx, "i1", data); err != nil {
+		t.Fatal(err)
+	}
+	cs.ClearActions()
+	if _, err := c.UpsertCredsSecret(ctx, "i1", data); err != nil {
+		t.Fatal(err)
+	}
+	if a := cs.Actions(); len(a) != 1 || !a[0].Matches("update", "secrets") {
+		t.Fatalf("actions = %v", a)
+	}
+}

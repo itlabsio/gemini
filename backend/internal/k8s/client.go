@@ -91,6 +91,13 @@ func (c *Client) ownerRefs() []metav1.OwnerReference {
 	return []metav1.OwnerReference{*c.ownerRef}
 }
 
+// Лимиты запросов к API-серверу. Дефолт client-go (5/10) на сотнях баз растягивал
+// reconcile шаблонов на минуты, а watcher и API стоят в той же очереди.
+const (
+	clientQPS   = 20
+	clientBurst = 40
+)
+
 // New создаёт клиента: сначала пытается in-cluster config, затем ~/.kube/config
 // (или $KUBECONFIG) — удобно для локального запуска.
 func New(namespace, headRole string) (*Client, error) {
@@ -107,6 +114,7 @@ func New(namespace, headRole string) (*Client, error) {
 			return nil, fmt.Errorf("k8s config (in-cluster and kubeconfig both failed): %w", err)
 		}
 	}
+	cfg.QPS, cfg.Burst = clientQPS, clientBurst
 	cs, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("k8s clientset: %w", err)

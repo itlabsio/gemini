@@ -53,16 +53,22 @@ func (c *Client) upsertSecret(ctx context.Context, name string, labels, data map
 	meta.OwnerReferences = c.ownerRefs()
 	sec := &corev1.Secret{ObjectMeta: meta, StringData: data, Type: corev1.SecretTypeOpaque}
 
-	_, err := c.cs.CoreV1().Secrets(c.namespace).Create(ctx, sec, metav1.CreateOptions{})
-	switch {
-	case err == nil:
-		log.Printf("k8s: Secret %s created", name)
-	case apierrors.IsAlreadyExists(err):
-		if _, err = c.cs.CoreV1().Secrets(c.namespace).Update(ctx, sec, metav1.UpdateOptions{}); err != nil {
-			return "", fmt.Errorf("update secret %s: %w", name, err)
+	// Обычно секрет уже есть, поэтому сначала Update: один запрос вместо двух.
+	secrets := c.cs.CoreV1().Secrets(c.namespace)
+	_, err := secrets.Update(ctx, sec, metav1.UpdateOptions{})
+	if apierrors.IsNotFound(err) {
+		if _, err = secrets.Create(ctx, sec, metav1.CreateOptions{}); err == nil {
+			log.Printf("k8s: Secret %s created", name)
+			return name, nil
 		}
-	default:
-		return "", fmt.Errorf("create secret %s: %w", name, err)
+		if !apierrors.IsAlreadyExists(err) {
+			return "", fmt.Errorf("create secret %s: %w", name, err)
+		}
+		// Секрет только что создал параллельный запуск — обновляем поверх.
+		_, err = secrets.Update(ctx, sec, metav1.UpdateOptions{})
+	}
+	if err != nil {
+		return "", fmt.Errorf("update secret %s: %w", name, err)
 	}
 	return name, nil
 }

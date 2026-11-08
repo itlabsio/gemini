@@ -224,7 +224,7 @@ func (o *Operator) StartDump(ctx context.Context, db *model.Database, trigger mo
 	if err := o.upsertInstanceCreds(ctx, inst); err != nil {
 		return nil, err
 	}
-	if err := o.ensureCronJob(ctx, "dump", db); err != nil {
+	if err := o.ensureCronJob(ctx, "dump", db, ""); err != nil {
 		return nil, err
 	}
 	objectKey := fmt.Sprintf("%s/%s/%s.dump", inst.Name, db.DBName, time.Now().UTC().Format("20060102T150405Z"))
@@ -263,8 +263,8 @@ func (o *Operator) StartDump(ctx context.Context, db *model.Database, trigger mo
 // restore: всегда suspend; RESTORE_MODE берётся из инстанса, TARGET_DB_OWNER
 // добавляется на запуск (он в сопоставлении, не в базе) — см. StartRestore.
 // В in_place_per_db шаблон дополнительно подключает секрет кред базы (сам
-// секрет — upsertDatabaseCreds).
-func (o *Operator) ensureCronJob(ctx context.Context, kind string, db *model.Database) error {
+// секрет — upsertDatabaseCreds). knownSpecHash — хэш из List ("" — неизвестен).
+func (o *Operator) ensureCronJob(ctx context.Context, kind string, db *model.Database, knownSpecHash string) error {
 	inst, err := o.store.GetInstance(ctx, db.InstanceID)
 	if err != nil {
 		return err
@@ -314,6 +314,8 @@ func (o *Operator) ensureCronJob(ctx context.Context, kind string, db *model.Dat
 		Env:          env,
 
 		TTLSecondsAfterFinished: ttl,
+
+		KnownSpecHash: knownSpecHash,
 	})
 }
 
@@ -359,7 +361,7 @@ func (o *Operator) StartRestore(ctx context.Context, m *model.DatabaseMapping, s
 			return nil, err
 		}
 	}
-	if err := o.ensureCronJob(ctx, "restore", target); err != nil {
+	if err := o.ensureCronJob(ctx, "restore", target, ""); err != nil {
 		return nil, err
 	}
 

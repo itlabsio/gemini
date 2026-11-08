@@ -65,6 +65,11 @@ func (o *Operator) reconcileTemplates(ctx context.Context) {
 		return
 	}
 
+	knownHash := make(map[string]string, len(existing)) // имя CronJob'а → хэш спеки
+	for _, cj := range existing {
+		knownHash[cj.Name] = cj.SpecHash
+	}
+
 	wanted := map[string]bool{}          // имя CronJob'а
 	wantedInstances := map[string]bool{} // instanceID с активной базой/сопоставлением
 	wantedDBCreds := map[string]bool{}   // databaseID с секретом кред restore (in_place_per_db)
@@ -78,9 +83,10 @@ func (o *Operator) reconcileTemplates(ctx context.Context) {
 				// wanted — до ensure: если обновление не прошло (невалидный
 				// schedule, сбой API), существующий CronJob остаётся со старым
 				// spec и продолжает работать, а не удаляется ниже.
-				wanted[k8s.CronJobName("dump", dbs[i].ID)] = true
+				name := k8s.CronJobName("dump", dbs[i].ID)
+				wanted[name] = true
 				wantedInstances[dbs[i].InstanceID] = true // секрет кред нужен сохранённому CronJob'у
-				if err := o.ensureCronJob(ctx, "dump", &dbs[i]); err != nil {
+				if err := o.ensureCronJob(ctx, "dump", &dbs[i], knownHash[name]); err != nil {
 					log.Printf("operator: ensure dump cronjob for %s: %v", dbs[i].DBName, err)
 				}
 			}
@@ -98,9 +104,10 @@ func (o *Operator) reconcileTemplates(ctx context.Context) {
 				if err != nil {
 					continue
 				}
-				wanted[k8s.CronJobName("restore", tgt.ID)] = true // до ensure — см. dump выше
+				name := k8s.CronJobName("restore", tgt.ID)
+				wanted[name] = true // до ensure — см. dump выше
 				wantedInstances[tgt.InstanceID] = true
-				if err := o.ensureCronJob(ctx, "restore", tgt); err != nil {
+				if err := o.ensureCronJob(ctx, "restore", tgt, knownHash[name]); err != nil {
 					log.Printf("operator: ensure restore cronjob for %s: %v", tgt.DBName, err)
 					continue
 				}

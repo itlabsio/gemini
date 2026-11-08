@@ -2,7 +2,12 @@ package k8s
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"log"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,6 +26,9 @@ const JobActiveDeadline = 6 * time.Hour
 
 // defaultJobTTLSeconds — TTL завершённых Job'ов, если CronSpec его не задал.
 const defaultJobTTLSeconds int32 = 300
+
+// annotationSpecHash — хэш желаемой спеки CronJob'а: совпал — обновлять нечего.
+const annotationSpecHash = "gemini.itlabs.io/spec-hash"
 
 // CronSpec — CronJob-шаблон прогона для одной базы. Создаётся ВСЕГДА для активной
 // базы: dump — на Source по расписанию, restore — на Target всегда в suspend.
@@ -54,6 +62,10 @@ type CronSpec struct {
 
 	// TTLSecondsAfterFinished — spec.ttlSecondsAfterFinished Job'ов; 0 → defaultJobTTLSeconds.
 	TTLSecondsAfterFinished int32
+
+	// KnownSpecHash — хэш текущего CronJob'а, если он уже известен из List:
+	// при совпадении ReconcileCronJob не делает ни одного запроса к API.
+	KnownSpecHash string
 }
 
 // CronJobName — детерминированное имя CronJob: gemini-<kind>-<databaseID>.
@@ -109,8 +121,9 @@ func (c *Client) ReconcileCronJob(ctx context.Context, s CronSpec) error {
 		{Name: "WORKDIR", Value: "/work"},
 		{Name: "HOME", Value: "/tmp"},
 	}
-	for k, v := range s.Env {
-		env = append(env, corev1.EnvVar{Name: k, Value: v})
+	// Порядок обхода map случаен, а от него зависит спека и её хэш.
+	for _, k := range slices.Sorted(maps.Keys(s.Env)) {
+		env = append(env, corev1.EnvVar{Name: k, Value: s.Env[k]})
 	}
 
 	var envFrom []corev1.EnvFromSource
@@ -194,6 +207,15 @@ func (c *Client) ReconcileCronJob(ctx context.Context, s CronSpec) error {
 		},
 	}
 
+	hash, err := cronJobSpecHash(cj)
+	if err != nil {
+		return err
+	}
+	if hash == s.KnownSpecHash {
+		return nil
+	}
+	cj.Annotations = map[string]string{annotationSpecHash: hash}
+
 	existing, err := c.cs.BatchV1().CronJobs(c.namespace).Get(ctx, name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		if _, err = c.cs.BatchV1().CronJobs(c.namespace).Create(ctx, cj, metav1.CreateOptions{}); err != nil {
@@ -204,6 +226,9 @@ func (c *Client) ReconcileCronJob(ctx context.Context, s CronSpec) error {
 	}
 	if err != nil {
 		return err
+	}
+	if existing.Annotations[annotationSpecHash] == hash {
+		return nil
 	}
 	cj.ObjectMeta.ResourceVersion = existing.ResourceVersion
 	if cj.OwnerReferences == nil {
@@ -218,6 +243,20 @@ func (c *Client) ReconcileCronJob(ctx context.Context, s CronSpec) error {
 			name, s.DatabaseName, existing.Spec.Schedule, schedule, wasSuspended, suspend)
 	}
 	return nil
+}
+
+// cronJobSpecHash — хэш всего, что задаёт ReconcileCronJob.
+func cronJobSpecHash(cj *batchv1.CronJob) (string, error) {
+	raw, err := json.Marshal(struct {
+		Labels map[string]string
+		Owners []metav1.OwnerReference
+		Spec   batchv1.CronJobSpec
+	}{cj.Labels, cj.OwnerReferences, cj.Spec})
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // DeleteCronJob удаляет CronJob-шаблон (kind, база) — при disable/удалении базы.
@@ -238,6 +277,7 @@ type ManagedCronJob struct {
 	Name       string
 	Kind       string
 	DatabaseID string
+	SpecHash   string
 }
 
 // ListManagedCronJobs возвращает CronJob'ы Gemini этой головы в namespace.
@@ -261,7 +301,7 @@ func (c *Client) ListManagedCronJobs(ctx context.Context) ([]ManagedCronJob, err
 				kind, dbID = k, d
 			}
 		}
-		out = append(out, ManagedCronJob{Name: cj.Name, Kind: kind, DatabaseID: dbID})
+		out = append(out, ManagedCronJob{Name: cj.Name, Kind: kind, DatabaseID: dbID, SpecHash: cj.Annotations[annotationSpecHash]})
 	}
 	return out, nil
 }
