@@ -108,8 +108,8 @@ export function ProjectsManager({ projects, manage = true }: { projects: Project
             <TableHeader>
               <TableRow>
                 <TableHead>Проект</TableHead>
-                <TableHead>Инстансов</TableHead>
-                <TableHead className="text-right" />
+                <TableHead>Инстансы</TableHead>
+                <TableHead className="text-right">Действия</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -136,15 +136,6 @@ export function ProjectsManager({ projects, manage = true }: { projects: Project
                     )}
                   </TableCell>
                   <TableCell className="text-right whitespace-nowrap">
-                    <Button variant="ghost-violet" size="icon-sm" asChild>
-                      <Link
-                        href={`/projects/${encodeURIComponent(p.name)}/notifications`}
-                        aria-label="Уведомления"
-                        title="Уведомления проекта"
-                      >
-                        <Bell />
-                      </Link>
-                    </Button>
                     {manage && p.managed_by === "terraform" && (
                       <Button
                         variant="ghost-orange"
@@ -157,6 +148,15 @@ export function ProjectsManager({ projects, manage = true }: { projects: Project
                         <TagX />
                       </Button>
                     )}
+                    <Button variant="ghost-violet" size="icon-sm" asChild>
+                      <Link
+                        href={`/projects/${encodeURIComponent(p.name)}/notifications`}
+                        aria-label="Уведомления"
+                        title="Уведомления проекта"
+                      >
+                        <Bell />
+                      </Link>
+                    </Button>
                     {manage && (
                       <Button
                         variant="ghost-destructive"
