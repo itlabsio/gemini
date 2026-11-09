@@ -22,11 +22,13 @@ const ROLE_BADGE: Record<ProjectRole, { variant: "secondary" | "info"; className
 
 export function UserMenu({
   email,
+  name,
   superuser,
   security,
   projects,
 }: {
   email: string;
+  name?: string;
   superuser: boolean;
   security: boolean;
   projects: Me["projects"];
@@ -41,9 +43,9 @@ export function UserMenu({
           <span className="hidden max-w-[16ch] truncate md:inline">{email}</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72 max-w-[calc(100vw-2rem)]">
+      <DropdownMenuContent align="end" className="w-max min-w-52 max-w-[min(18rem,calc(100vw-2rem))]">
         <DropdownMenuLabel className="flex flex-col gap-2">
-          <span className="truncate text-sm font-medium">{email}</span>
+          <span className="truncate text-sm font-medium">{name || email}</span>
           {(superuser || security) && (
             <div className="flex flex-wrap gap-1.5">
               {superuser ? (

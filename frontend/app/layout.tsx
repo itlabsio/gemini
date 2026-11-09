@@ -100,6 +100,7 @@ export default async function RootLayout({
                       <div className="shrink-0">
                         <UserMenu
                           email={session.user.email ?? "—"}
+                          name={session.user.name ?? undefined}
                           superuser={superuser}
                           security={security}
                           projects={projects}
