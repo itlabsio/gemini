@@ -35,6 +35,9 @@ const buttonVariants = cva(
         "ghost-orange":
           "hover:bg-orange-500/10 hover:text-orange-500 " +
           "focus-visible:text-orange-500 focus-visible:ring-orange-500/40",
+        "ghost-violet":
+          "hover:bg-violet-500/10 hover:text-violet-500 " +
+          "focus-visible:text-violet-500 focus-visible:ring-violet-500/40",
         "ghost-success":
           "hover:bg-success/10 hover:text-success " +
           "focus-visible:text-success focus-visible:ring-success/40",

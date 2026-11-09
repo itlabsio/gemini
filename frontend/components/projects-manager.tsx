@@ -127,7 +127,7 @@ export function ProjectsManager({ projects, manage = true }: { projects: Project
                         href={`/instances?project=${encodeURIComponent(p.name)}`}
                         title="Показать инстансы проекта"
                       >
-                        <Badge variant="secondary" className="hover:bg-secondary/70">
+                        <Badge variant="secondary" className="hover:bg-sky-500/15 hover:text-sky-500">
                           {p.instance_count}
                         </Badge>
                       </Link>
@@ -136,7 +136,7 @@ export function ProjectsManager({ projects, manage = true }: { projects: Project
                     )}
                   </TableCell>
                   <TableCell className="text-right whitespace-nowrap">
-                    <Button variant="ghost" size="icon-sm" asChild>
+                    <Button variant="ghost-violet" size="icon-sm" asChild>
                       <Link
                         href={`/projects/${encodeURIComponent(p.name)}/notifications`}
                         aria-label="Уведомления"
