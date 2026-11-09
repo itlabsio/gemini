@@ -34,10 +34,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-export function ProjectsManager({ projects }: { projects: Project[] }) {
+type ProjectRow = Pick<Project, "name" | "instance_count" | "managed_by">;
+
+/** manage=false — только просмотр и уведомления (админ проекта, не superuser). */
+export function ProjectsManager({ projects, manage = true }: { projects: ProjectRow[]; manage?: boolean }) {
   const [pending, start] = useTransition();
   const [name, setName] = useState("");
-  const [toDelete, setToDelete] = useState<Project | null>(null);
+  const [toDelete, setToDelete] = useState<ProjectRow | null>(null);
 
   function add() {
     const n = name.trim();
@@ -76,11 +79,13 @@ export function ProjectsManager({ projects }: { projects: Project[] }) {
         <CardHeader>
           <CardTitle>Список проектов</CardTitle>
           <CardDescription>
-            Имя должно совпадать с названием группы Keycloak. Проект с инстансами удалить нельзя
+            {manage
+              ? "Имя должно совпадать с названием группы Keycloak. Проект с инстансами удалить нельзя"
+              : "Проекты, в которых у вас роль admin"}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <form
+          {manage && <form
             className="flex gap-2"
             onSubmit={(e) => {
               e.preventDefault();
@@ -97,7 +102,7 @@ export function ProjectsManager({ projects }: { projects: Project[] }) {
               <Plus />
               Создать
             </Button>
-          </form>
+          </form>}
 
           <Table>
             <TableHeader>
@@ -140,7 +145,7 @@ export function ProjectsManager({ projects }: { projects: Project[] }) {
                         <Bell />
                       </Link>
                     </Button>
-                    {p.managed_by === "terraform" && (
+                    {manage && p.managed_by === "terraform" && (
                       <Button
                         variant="ghost-orange"
                         size="icon-sm"
@@ -152,16 +157,18 @@ export function ProjectsManager({ projects }: { projects: Project[] }) {
                         <TagX />
                       </Button>
                     )}
-                    <Button
-                      variant="ghost-destructive"
-                      size="icon-sm"
-                      aria-label="Удалить"
-                      title="Удалить проект"
-                      disabled={p.instance_count > 0}
-                      onClick={() => setToDelete(p)}
-                    >
-                      <Trash2 />
-                    </Button>
+                    {manage && (
+                      <Button
+                        variant="ghost-destructive"
+                        size="icon-sm"
+                        aria-label="Удалить"
+                        title="Удалить проект"
+                        disabled={p.instance_count > 0}
+                        onClick={() => setToDelete(p)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

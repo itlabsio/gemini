@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getMe, listProjects } from "@/lib/api";
+import { getMe, listInstances, listProjects } from "@/lib/api";
 import { projectsAtLeast } from "@/lib/rbac";
 import type { Project } from "@/lib/types";
 import { ProjectsManager } from "@/components/projects-manager";
@@ -15,18 +14,16 @@ export default async function ProjectsPage() {
   if (!me.superuser) {
     const names = projectsAtLeast(me, "admin");
     if (names.length === 0) redirect("/instances");
+    const instances = await listInstances();
+    const rows = names.map((name) => ({
+      name,
+      managed_by: "",
+      instance_count: instances.filter((i) => i.project === name).length,
+    }));
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-6">
-        <PageHeader title="Проекты" description="Проекты, где у вас роль admin" />
-        <ul className="flex flex-col gap-2">
-          {names.map((n) => (
-            <li key={n}>
-              <Link href={`/projects/${encodeURIComponent(n)}/notifications`} className="hover:underline">
-                {n} — уведомления
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <PageHeader title="Проекты" description="Настройка уведомлений проектов" />
+        <ProjectsManager projects={rows} manage={false} />
       </div>
     );
   }
