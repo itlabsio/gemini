@@ -200,7 +200,7 @@ export function NotificationChannels({
               <TableRow>
                 <TableHead>Имя</TableHead>
                 <TableHead>Чат</TableHead>
-                <TableHead>События</TableHead>
+                <TableHead className="w-28">События</TableHead>
                 <TableHead className="text-right" />
               </TableRow>
             </TableHeader>
@@ -223,14 +223,15 @@ export function NotificationChannels({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-col items-start gap-1.5">
                       {c.on_failure && <Badge variant="outline">провалы</Badge>}
                       {c.on_success && <Badge variant="outline">успехи</Badge>}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right whitespace-nowrap">
+                  <TableCell className="whitespace-nowrap">
+                    <div className="flex items-center justify-end">
                     <Switch
-                      className="mr-2 align-middle"
+                      className="mr-2"
                       checked={c.enabled}
                       disabled={pending}
                       aria-label={c.enabled ? "Выключить канал" : "Включить канал"}
@@ -265,6 +266,7 @@ export function NotificationChannels({
                     >
                       <Trash2 />
                     </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
