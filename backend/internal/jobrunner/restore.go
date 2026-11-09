@@ -305,6 +305,11 @@ func databaseExists(ctx context.Context, e Env, name string) (bool, error) {
 // terminateBackends обрывает чужие сессии к targetDB, подключаясь к connectDB,
 // и пишет в лог, сколько и чьих сессий оборвано: restore на target рвёт
 // соединения приложений, и по логу должно быть видно, кого он задел.
+//
+// pg_terminate_backend без прав бросает ERROR и валит весь запрос, поэтому
+// сессии, которые нельзя оборвать (служебная monitor в MDB), пропускаем заранее:
+// условие повторяет проверку прав в PostgreSQL. Если такая сессия мешает,
+// recreate упадёт на RENAME — до деструктивных операций.
 func terminateBackends(ctx context.Context, e Env, connectDB, targetDB string) error {
 	// Поля и записи разделены нулевым байтом (-z/-0): application_name
 	// задаёт клиент и может содержать что угодно.
@@ -312,9 +317,13 @@ func terminateBackends(ctx context.Context, e Env, connectDB, targetDB string) e
 		"--no-psqlrc", "--tuples-only", "--no-align", "--quiet",
 		"--field-separator-zero", "--record-separator-zero",
 		"--command", fmt.Sprintf(
-			`SELECT COALESCE(application_name, ''), COALESCE(usename, ''), pg_terminate_backend(pid)
-			 FROM pg_stat_activity
-			 WHERE datname = %s AND pid <> pg_backend_pid();`, quoteLit(targetDB)))
+			`SELECT COALESCE(a.application_name, ''), COALESCE(a.usename, ''),
+			        CASE WHEN current_setting('is_superuser')::bool
+			                  OR (NOT COALESCE(r.rolsuper, true)
+			                      AND (pg_has_role(r.oid, 'USAGE') OR pg_has_role('pg_signal_backend', 'USAGE')))
+			             THEN pg_terminate_backend(a.pid) ELSE false END
+			 FROM pg_stat_activity a LEFT JOIN pg_roles r ON r.oid = a.usesysid
+			 WHERE a.datname = %s AND a.pid <> pg_backend_pid();`, quoteLit(targetDB)))
 	cmd.Env = e.pgEnv(connectDB)
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
