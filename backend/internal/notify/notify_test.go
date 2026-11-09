@@ -171,16 +171,24 @@ func TestBotName(t *testing.T) {
 	ctx := context.Background()
 
 	body = `{"ok":true,"result":{"first_name":"G","username":"gemini_bot"}}`
-	if got, err := n.BotName(ctx, ProviderTelegram, testToken); err != nil || got != "@gemini_bot" {
+	if got, err := n.BotName(ctx, ProviderTelegram, testToken); err != nil || got != "G (@gemini_bot)" {
 		t.Errorf("telegram: %q %v", got, err)
 	}
-	body = `{"user_id":1,"first_name":"Gemini","username":"gem","is_bot":true}`
-	if got, err := n.BotName(ctx, ProviderMax, "max-token"); err != nil || got != "@gem" || auth != "max-token" {
+	body = `{"user_id":1,"first_name":"sd_alerts","username":"id123_bot","is_bot":true}`
+	if got, err := n.BotName(ctx, ProviderMax, "max-token"); err != nil || got != "sd_alerts (@id123_bot)" || auth != "max-token" {
 		t.Errorf("max: %q %v auth=%q", got, err, auth)
 	}
-	body = `{"user_id":1,"first_name":"Gemini","username":null}`
-	if got, err := n.BotName(ctx, ProviderMax, "t"); err != nil || got != "Gemini" {
+	body = `{"user_id":1,"username":"id123_bot"}`
+	if got, err := n.BotName(ctx, ProviderMax, "t"); err != nil || got != "@id123_bot" {
+		t.Errorf("max without first_name: %q %v", got, err)
+	}
+	body = `{"user_id":1,"first_name":"sd_alerts","username":null}`
+	if got, err := n.BotName(ctx, ProviderMax, "t"); err != nil || got != "sd_alerts" {
 		t.Errorf("max without username: %q %v", got, err)
+	}
+	body = `{"ok":true,"result":{"first_name":"Gemini"}}`
+	if got, err := n.BotName(ctx, ProviderTelegram, testToken); err != nil || got != "Gemini" {
+		t.Errorf("telegram without username: %q %v", got, err)
 	}
 	body = ""
 	if _, err := n.BotName(ctx, ProviderMax, "t"); err == nil {
@@ -204,6 +212,28 @@ func TestMaxCAScopedToMaxClient(t *testing.T) {
 	}
 	if dt := http.DefaultTransport.(*http.Transport); dt.TLSClientConfig != nil && dt.TLSClientConfig.RootCAs != nil {
 		t.Error("default transport was modified")
+	}
+}
+
+func TestNormalizeToken(t *testing.T) {
+	if got := NormalizeToken(ProviderTelegram, "bot"+testToken); got != testToken {
+		t.Errorf("telegram: %q", got)
+	}
+	if got := NormalizeToken(ProviderMax, "botmaxtoken"); got != "botmaxtoken" {
+		t.Errorf("max token changed: %q", got)
+	}
+}
+
+func TestMaxNotFoundIsExplained(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	n := New()
+	n.maxURL = srv.URL
+	err := n.Send(context.Background(), Channel{Provider: ProviderMax, Token: "t", ChatID: "100"}, "x")
+	if err == nil || !strings.Contains(err.Error(), "отрицательный") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

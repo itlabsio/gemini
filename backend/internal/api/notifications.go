@@ -78,6 +78,7 @@ func (req notificationChannelRequest) input() (store.NotificationChannelInput, s
 	if in.Provider == "" {
 		in.Provider = notify.ProviderTelegram
 	}
+	in.BotToken = notify.NormalizeToken(in.Provider, in.BotToken)
 	switch {
 	case in.Name == "" || utf8.RuneCountInString(in.Name) > 64:
 		return in, "name must be 1-64 characters"
@@ -259,7 +260,7 @@ func (s *Server) putSystemBot(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	token := strings.TrimSpace(req.Token)
+	token := notify.NormalizeToken(provider, strings.TrimSpace(req.Token))
 	if !notify.ValidToken(provider, token) {
 		writeError(w, http.StatusBadRequest, "unsupported provider or invalid token format")
 		return

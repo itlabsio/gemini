@@ -174,7 +174,7 @@ func scrubURL(provider string, err error) error {
 }
 
 // BotName запрашивает у мессенджера имя бота и этим же проверяет токен.
-// Возвращает @username, а без него — отображаемое имя.
+// Формат — «имя (@username)»; если одного из значений нет, берётся другое.
 func (n *Notifier) BotName(ctx context.Context, provider, token string) (string, error) {
 	var (
 		req    *http.Request
@@ -219,6 +219,8 @@ func (n *Notifier) BotName(ctx context.Context, provider, token string) (string,
 		b = out.Result
 	}
 	switch {
+	case b.FirstName != "" && b.Username != "":
+		return b.FirstName + " (@" + b.Username + ")", nil
 	case b.Username != "":
 		return "@" + b.Username, nil
 	case b.FirstName != "":
@@ -271,6 +273,9 @@ func (n *Notifier) sendMax(ctx context.Context, ch Channel, text string) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return errors.New("notify: MAX не нашёл чат: проверьте ID (у чатов и каналов он отрицательный) и что бот добавлен в чат с правом публикации сообщений")
+	}
 	if resp.StatusCode != http.StatusOK {
 		var out struct {
 			Code    string `json:"code"`
@@ -291,6 +296,14 @@ var (
 	maxTokenRe = regexp.MustCompile(`^[\x21-\x7e]{20,512}$`)
 	maxChatRe  = regexp.MustCompile(`^-?\d{1,20}$`)
 )
+
+// NormalizeToken убирает префикс "bot", с которым токен Telegram указан в URL Bot API.
+func NormalizeToken(provider, token string) string {
+	if provider == ProviderTelegram {
+		return strings.TrimPrefix(token, "bot")
+	}
+	return token
+}
 
 // ValidToken проверяет формат токена: он попадает в путь URL или заголовок,
 // поэтому произвольные символы пропускать нельзя. Неизвестный провайдер — false.
