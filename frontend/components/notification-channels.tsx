@@ -18,6 +18,7 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -57,6 +58,11 @@ const PROVIDERS: { value: NotificationProvider; label: string }[] = [
   { value: "telegram", label: "Telegram" },
   { value: "max", label: "MAX" },
 ];
+
+const TOKEN_PLACEHOLDER: Record<NotificationProvider, string> = {
+  telegram: "123456789:AAH…",
+  max: "токен с business.max.ru",
+};
 
 const providerLabel = (p: string) => PROVIDERS.find((x) => x.value === p)?.label ?? p;
 
@@ -156,6 +162,13 @@ export function NotificationChannels({
     });
   }
 
+  function setEnabled(c: NotificationChannel, enabled: boolean) {
+    start(async () => {
+      const res = await saveChannelAction(project, c.id, { ...payloadOf(c), enabled });
+      if (!res.ok) toast.error(res.error);
+    });
+  }
+
   async function test(c: NotificationChannel) {
     setTesting(c.id);
     const res = await testChannelAction(project, c.id);
@@ -195,10 +208,7 @@ export function NotificationChannels({
               {channels.map((c) => (
                 <TableRow key={c.id}>
                   <TableCell className="font-medium">
-                    <div className="flex items-center gap-2">
-                      {c.name}
-                      {!c.enabled && <Badge variant="secondary">выключен</Badge>}
-                    </div>
+                    {c.name}
                   </TableCell>
                   <TableCell>
                     <div className="font-mono text-xs">
@@ -219,6 +229,14 @@ export function NotificationChannels({
                     </div>
                   </TableCell>
                   <TableCell className="text-right whitespace-nowrap">
+                    <Switch
+                      className="mr-2 align-middle"
+                      checked={c.enabled}
+                      disabled={pending}
+                      aria-label={c.enabled ? "Выключить канал" : "Включить канал"}
+                      title={c.enabled ? "Канал включён" : "Канал выключен"}
+                      onCheckedChange={(v) => setEnabled(c, v)}
+                    />
                     <Button
                       variant="ghost"
                       size="icon"
@@ -272,10 +290,7 @@ export function NotificationChannels({
           </DialogHeader>
           {form && (
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Имя" htmlFor="nc_name">
-                <Input id="nc_name" value={form.name} onChange={(e) => set("name", e.target.value)} />
-              </Field>
-              <Field label="Мессенджер">
+              <Field label="Мессенджер" className="col-span-2">
                 <Select
                   value={form.provider}
                   onValueChange={(v) => changeProvider(v as NotificationProvider)}
@@ -292,10 +307,18 @@ export function NotificationChannels({
                   </SelectContent>
                 </Select>
               </Field>
+              <Field label="Имя" htmlFor="nc_name" className="col-span-2">
+                <Input id="nc_name" value={form.name} onChange={(e) => set("name", e.target.value)} />
+              </Field>
               <Field
-                label="ID чата"
+                label="ID чата или канала"
                 htmlFor="nc_chat"
                 className={form.provider === "telegram" ? undefined : "col-span-2"}
+                hint={
+                  form.provider === "max"
+                    ? "У чатов и каналов MAX ID отрицательный, бот должен иметь право публикации сообщений"
+                    : undefined
+                }
               >
                 <Input
                   id="nc_chat"
@@ -313,17 +336,30 @@ export function NotificationChannels({
                   />
                 </Field>
               )}
-              <div className="col-span-2 flex items-center gap-2">
-                <Switch
-                  id="nc_system"
-                  checked={form.use_system_bot}
-                  disabled={!systemBots[form.provider]}
-                  onCheckedChange={(v) => set("use_system_bot", v)}
-                />
-                <Label htmlFor="nc_system">
-                  Системный бот {systemBots[form.provider] ?? "(не настроен)"}
-                </Label>
-              </div>
+              <Field
+                label="Бот"
+                className="col-span-2"
+                hint={
+                  form.use_system_bot && systemBots[form.provider]
+                    ? `Добавьте бота ${systemBots[form.provider]} в чат с правом публикации сообщений`
+                    : undefined
+                }
+              >
+                <Select
+                  value={form.use_system_bot ? "system" : "own"}
+                  onValueChange={(v) => set("use_system_bot", v === "system")}
+                >
+                  <SelectTrigger aria-label="Бот">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="system" disabled={!systemBots[form.provider]}>
+                      Системный: {systemBots[form.provider] ?? "не настроен"}
+                    </SelectItem>
+                    <SelectItem value="own">{editing?.hadOwnBot ? "Свой бот" : "Добавить нового"}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
               {!form.use_system_bot && (
                 <Field label="Токен бота" htmlFor="nc_token" className="col-span-2">
                   <Input
@@ -331,25 +367,26 @@ export function NotificationChannels({
                     type="password"
                     value={form.bot_token}
                     onChange={(e) => set("bot_token", e.target.value)}
-                    placeholder={editing?.hadOwnBot ? "не менять" : undefined}
+                    placeholder={editing?.hadOwnBot ? "не менять" : TOKEN_PLACEHOLDER[form.provider]}
                     autoComplete="new-password"
                   />
                 </Field>
               )}
-              <div className="col-span-2 flex flex-wrap gap-6">
-                {(
-                  [
-                    ["on_failure", "Провалы"],
-                    ["on_success", "Успешные прогоны"],
-                    ["enabled", "Включён"],
-                  ] as const
-                ).map(([k, label]) => (
-                  <div key={k} className="flex items-center gap-2">
-                    <Switch id={`nc_${k}`} checked={form[k]} onCheckedChange={(v) => set(k, v)} />
-                    <Label htmlFor={`nc_${k}`}>{label}</Label>
-                  </div>
-                ))}
-              </div>
+              <Field label="События" className="col-span-2">
+                <div className="flex flex-wrap gap-6">
+                  {(
+                    [
+                      ["on_success", "Успешные запуски"],
+                      ["on_failure", "Провалы"],
+                    ] as const
+                  ).map(([k, label]) => (
+                    <div key={k} className="flex items-center gap-2">
+                      <Checkbox id={`nc_${k}`} checked={form[k]} onCheckedChange={(v) => set(k, v === true)} />
+                      <Label htmlFor={`nc_${k}`}>{label}</Label>
+                    </div>
+                  ))}
+                </div>
+              </Field>
             </div>
           )}
           <DialogFooter>
@@ -437,7 +474,7 @@ export function SystemBots({ systemBots }: { systemBots: Record<string, string> 
                   type="password"
                   value={tokens[p.value] ?? ""}
                   onChange={(e) => setTokens((t) => ({ ...t, [p.value]: e.target.value }))}
-                  placeholder={systemBots[p.value] ? "введите, чтобы заменить" : "токен бота"}
+                  placeholder={systemBots[p.value] ? "введите, чтобы заменить" : TOKEN_PLACEHOLDER[p.value]}
                   autoComplete="new-password"
                 />
                 <Button disabled={pending || !tokens[p.value]?.trim()} onClick={() => save(p.value)}>
