@@ -31,11 +31,6 @@ vault:
   authMethod: kubernetes
   role: gemini
 
-notify:
-  enabled: true
-  provider: slack
-  existingSecret: gemini-notify
-
 job:
   storage:
     className: yc-network-ssd

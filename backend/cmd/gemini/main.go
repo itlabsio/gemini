@@ -152,7 +152,7 @@ func runServe() {
 		st.SetOwnerHead(kc.OwnerUID())
 	}
 
-	nt := notify.New(cfg.Notify)
+	nt := notify.New()
 	peerClient := peer.NewClient(cfg.PeerRetry, string(cfg.Role))
 	peerVerifier := peer.NewVerifier(cfg.PeerRetry.ClockSkew, cfg.PeerRole(), st.ActivePairingSecrets)
 
@@ -167,6 +167,7 @@ func runServe() {
 		Peer:         peerClient,
 		Vault:        vc,
 		Storage:      sc,
+		Notifier:     nt,
 		Ready: func() error {
 			c, cc := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cc()

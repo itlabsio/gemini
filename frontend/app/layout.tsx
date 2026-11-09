@@ -9,6 +9,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Toaster } from "@/components/ui/sonner";
 import { getMe, getPublicConfig } from "@/lib/api";
+import { projectsAtLeast } from "@/lib/rbac";
 import { isSecurityOnly } from "@/lib/audit";
 import type { HeadRole } from "@/lib/types";
 import "./globals.css";
@@ -38,6 +39,7 @@ export default async function RootLayout({
   }
 
   let superuser = false;
+  let projectAdmin = false;
   let security = false;
   let securityOnly = false;
   let roleLabel: string | undefined;
@@ -45,6 +47,7 @@ export default async function RootLayout({
     try {
       const me = await getMe();
       superuser = me.superuser;
+      projectAdmin = projectsAtLeast(me, "admin").length > 0;
       security = me.security;
       securityOnly = isSecurityOnly(me);
       roleLabel = me.superuser
@@ -94,6 +97,7 @@ export default async function RootLayout({
                         <Nav
                           headRole={headRole}
                           superuser={superuser}
+                          projectAdmin={projectAdmin}
                           securityOnly={securityOnly}
                           auditReader={superuser || security}
                         />

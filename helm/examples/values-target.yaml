@@ -41,11 +41,6 @@ vault:
   authMethod: kubernetes
   role: gemini
 
-notify:
-  enabled: true
-  provider: telegram
-  existingSecret: gemini-notify
-
 poller:
   interval: 5m
 

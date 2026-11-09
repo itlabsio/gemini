@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, Unlink } from "lucide-react";
+import { Bell, Plus, Trash2, Unlink } from "lucide-react";
 import type { Project } from "@/lib/types";
 import {
   createProjectAction,
@@ -131,6 +131,15 @@ export function ProjectsManager({ projects }: { projects: Project[] }) {
                     )}
                   </TableCell>
                   <TableCell className="text-right whitespace-nowrap">
+                    <Button variant="ghost" size="icon-sm" asChild>
+                      <Link
+                        href={`/projects/${encodeURIComponent(p.name)}/notifications`}
+                        aria-label="Уведомления"
+                        title="Уведомления проекта"
+                      >
+                        <Bell />
+                      </Link>
+                    </Button>
                     {p.managed_by === "terraform" && (
                       <Button
                         variant="ghost-destructive"

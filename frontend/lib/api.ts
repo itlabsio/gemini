@@ -12,6 +12,9 @@ import type {
   HeadRole,
   Instance,
   Me,
+  NotificationChannel,
+  NotificationProvider,
+  Notifications,
   Project,
   ResourceSpec,
   RestoreCandidate,
@@ -206,12 +209,41 @@ export const updateSettings = (p: {
   default_pod_scheduling?: Record<string, unknown> | null;
   job_ttl_minutes: number;
   job_pod_start_timeout_minutes: number;
-  notify_on_failure: boolean;
-  notify_on_success: boolean;
   audit_retention_days: number;
   runs_retention_days: number;
   download_url_ttl_minutes: number;
 }) => apiFetch<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(p) });
+
+/** project пустой — глобальные каналы (superuser). */
+const notificationsPath = (project: string) =>
+  project ? `/api/projects/${encodeURIComponent(project)}/notifications` : "/api/notifications";
+
+export interface NotificationChannelPayload {
+  name: string;
+  provider: NotificationProvider;
+  chat_id: string;
+  thread_id: string;
+  /** Пусто при обновлении — не менять */
+  bot_token: string;
+  use_system_bot: boolean;
+  on_failure: boolean;
+  on_success: boolean;
+  enabled: boolean;
+}
+export const listNotificationChannels = (project: string) =>
+  apiFetch<Notifications>(notificationsPath(project));
+export const createNotificationChannel = (project: string, p: NotificationChannelPayload) =>
+  apiFetch<NotificationChannel>(notificationsPath(project), { method: "POST", body: JSON.stringify(p) });
+export const updateNotificationChannel = (project: string, id: string, p: NotificationChannelPayload) =>
+  apiFetch<NotificationChannel>(`${notificationsPath(project)}/${id}`, { method: "PUT", body: JSON.stringify(p) });
+export const deleteNotificationChannel = (project: string, id: string) =>
+  apiFetch<void>(`${notificationsPath(project)}/${id}`, { method: "DELETE" });
+export const testNotificationChannel = (project: string, id: string) =>
+  apiFetch<{ status: string }>(`${notificationsPath(project)}/${id}/test`, { method: "POST" });
+export const setSystemBot = (provider: NotificationProvider, token: string) =>
+  apiFetch<void>(`/api/notification-bots/${provider}`, { method: "PUT", body: JSON.stringify({ token }) });
+export const deleteSystemBot = (provider: NotificationProvider) =>
+  apiFetch<void>(`/api/notification-bots/${provider}`, { method: "DELETE" });
 
 export const listS3Buckets = () => apiFetch<S3Bucket[]>("/api/s3-buckets");
 export interface S3BucketPayload {

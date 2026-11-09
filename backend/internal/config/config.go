@@ -36,10 +36,9 @@ type Config struct {
 	// plain-паролей подключений в собственной БД (at rest).
 	SecretEncryptionKey string
 
-	OIDC   OIDCConfig
-	S3     S3Config
-	Vault  VaultConfig
-	Notify NotifyConfig
+	OIDC  OIDCConfig
+	S3    S3Config
+	Vault VaultConfig
 
 	// PollInterval — период fallback-поллинга S3 (используется только target-головой).
 	PollInterval time.Duration
@@ -106,17 +105,6 @@ type VaultConfig struct {
 	K8sTokenPath string
 }
 
-// NotifyConfig — исходящие нотификации об ошибках.
-type NotifyConfig struct {
-	Enabled    bool
-	Provider   string // "slack" | "telegram"
-	WebhookURL string
-	// TelegramChatID нужен только для provider=telegram.
-	TelegramChatID string
-	// TelegramThreadID — топик форум-группы (message_thread_id), опционально.
-	TelegramThreadID string
-}
-
 // PeerRetryConfig — backoff ретраев межголовых webhook'ов (в обе стороны).
 type PeerRetryConfig struct {
 	InitialDelay time.Duration
@@ -157,13 +145,6 @@ func Load() (*Config, error) {
 			K8sRole:      os.Getenv("VAULT_K8S_ROLE"),
 			K8sMountPath: env("VAULT_K8S_MOUNT", "kubernetes"),
 			K8sTokenPath: env("VAULT_K8S_TOKEN_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/token"),
-		},
-		Notify: NotifyConfig{
-			Enabled:          envBool("NOTIFY_ENABLED", false),
-			Provider:         env("NOTIFY_PROVIDER", "slack"),
-			WebhookURL:       os.Getenv("NOTIFY_WEBHOOK_URL"),
-			TelegramChatID:   os.Getenv("NOTIFY_TELEGRAM_CHAT_ID"),
-			TelegramThreadID: os.Getenv("NOTIFY_TELEGRAM_THREAD_ID"),
 		},
 		PollInterval: envDuration("POLL_INTERVAL", 5*time.Minute),
 		PeerRetry: PeerRetryConfig{
@@ -231,9 +212,6 @@ func (c *Config) validate() error {
 				"(the mount path of the kubernetes auth backend goes to VAULT_K8S_MOUNT, not here)",
 				c.Vault.AuthMethod)
 		}
-	}
-	if c.Notify.Enabled && c.Notify.WebhookURL == "" {
-		return fmt.Errorf("NOTIFY_WEBHOOK_URL is required when NOTIFY_ENABLED=true")
 	}
 	return nil
 }

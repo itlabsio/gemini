@@ -18,6 +18,7 @@ import (
 
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/auth"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/config"
+	"gl.sdvor.com/devops/docker/gemini/backend/internal/notify"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/operator"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/peer"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/storage"
@@ -35,6 +36,7 @@ type Deps struct {
 	Peer         *peer.Client
 	Vault        *vault.Client
 	Storage      *storage.Pool
+	Notifier     *notify.Notifier
 	Ready        func() error // health readiness-проверка
 }
 
@@ -68,6 +70,24 @@ func NewRouter(d Deps) http.Handler {
 	apiR.HandleFunc("/projects", auth.RequireSuperuser(s.createProject)).Methods(http.MethodPost)
 	apiR.HandleFunc("/projects/{name}", auth.RequireSuperuser(s.deleteProject)).Methods(http.MethodDelete)
 	apiR.HandleFunc("/projects/{name}/managed-by", auth.RequireSuperuser(s.clearProjectManagedBy)).Methods(http.MethodDelete)
+
+	// Каналы уведомлений: проекта — admin этого проекта (проверка в channelScope),
+	// глобальные и системные боты — только superuser.
+	for _, c := range []struct {
+		prefix string
+		guard  func(http.HandlerFunc) http.HandlerFunc
+	}{
+		{"/projects/{name}/notifications", func(h http.HandlerFunc) http.HandlerFunc { return auth.RequireAnyProject(auth.RoleAdmin, h) }},
+		{"/notifications", auth.RequireSuperuser},
+	} {
+		apiR.HandleFunc(c.prefix, c.guard(s.listNotificationChannels)).Methods(http.MethodGet)
+		apiR.HandleFunc(c.prefix, c.guard(s.createNotificationChannel)).Methods(http.MethodPost)
+		apiR.HandleFunc(c.prefix+"/{id}", c.guard(s.updateNotificationChannel)).Methods(http.MethodPut)
+		apiR.HandleFunc(c.prefix+"/{id}", c.guard(s.deleteNotificationChannel)).Methods(http.MethodDelete)
+		apiR.HandleFunc(c.prefix+"/{id}/test", c.guard(s.testNotificationChannel)).Methods(http.MethodPost)
+	}
+	apiR.HandleFunc("/notification-bots/{provider}", auth.RequireSuperuser(s.putSystemBot)).Methods(http.MethodPut)
+	apiR.HandleFunc("/notification-bots/{provider}", auth.RequireSuperuser(s.deleteSystemBot)).Methods(http.MethodDelete)
 
 	apiR.HandleFunc("/instances", auth.RequireAnyProject(auth.RoleViewer, s.listInstances)).Methods(http.MethodGet)
 	apiR.HandleFunc("/instances", auth.RequireSuperuser(s.createInstance)).Methods(http.MethodPost)

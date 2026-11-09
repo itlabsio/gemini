@@ -324,10 +324,6 @@ type Settings struct {
 	// JobPodStartTimeoutMinutes — сколько ждать старта пода Job'а; дальше прогон
 	// закрывается как failed, Job удаляется.
 	JobPodStartTimeoutMinutes int32 `json:"job_pod_start_timeout_minutes"`
-	// NotifyOnFailure / NotifyOnSuccess — на какие исходы dump/restore слать
-	// уведомления (канал — notify.* в чарте). По умолчанию только провалы.
-	NotifyOnFailure bool `json:"notify_on_failure"`
-	NotifyOnSuccess bool `json:"notify_on_success"`
 	// AuditRetentionDays / RunsRetentionDays — сколько дней хранить журнал аудита
 	// и историю прогонов (активные и последний прогон вида по базе не удаляются).
 	AuditRetentionDays int32 `json:"audit_retention_days"`
@@ -362,6 +358,24 @@ type User struct {
 }
 
 // Project — проект, к которому привязываются инстансы (RBAC).
+// NotificationChannel — канал уведомлений. Project пуст у глобального канала.
+// HasOwnBot=false — шлёт через системного бота провайдера. Токен наружу не отдаётся.
+type NotificationChannel struct {
+	ID        string    `json:"id"`
+	Project   string    `json:"project"`
+	Name      string    `json:"name"`
+	Provider  string    `json:"provider"`
+	HasOwnBot bool      `json:"has_own_bot"`
+	BotName   string    `json:"bot_name"` // имя своего бота; у системного пусто
+	ChatID    string    `json:"chat_id"`
+	ThreadID  string    `json:"thread_id"`
+	OnFailure bool      `json:"on_failure"`
+	OnSuccess bool      `json:"on_success"`
+	Enabled   bool      `json:"enabled"`
+	CreatedBy string    `json:"created_by"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Project struct {
 	Name          string    `json:"name"`
 	InstanceCount int       `json:"instance_count"`

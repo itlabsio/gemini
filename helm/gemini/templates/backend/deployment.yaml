@@ -56,10 +56,6 @@ spec:
                 name: {{ .Values.encryptionKey.existingSecret }}
             - secretRef:
                 name: {{ .Values.s3.existingSecret }}
-            {{- if .Values.notify.enabled }}
-            - secretRef:
-                name: {{ .Values.notify.existingSecret }}
-            {{- end }}
             {{- if and .Values.vault.enabled (eq .Values.vault.authMethod "token") .Values.vault.existingSecret }}
             - secretRef:
                 name: {{ .Values.vault.existingSecret }}

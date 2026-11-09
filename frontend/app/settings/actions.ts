@@ -25,8 +25,6 @@ export async function updateSettingsAction(p: {
   default_pod_scheduling?: Record<string, unknown> | null;
   job_ttl_minutes: number;
   job_pod_start_timeout_minutes: number;
-  notify_on_failure: boolean;
-  notify_on_success: boolean;
   audit_retention_days: number;
   runs_retention_days: number;
   download_url_ttl_minutes: number;

@@ -27,6 +27,8 @@ interface NavItem {
 interface NavCtx {
   headRole: HeadRole;
   superuser: boolean;
+  /** Роль admin хотя бы в одном проекте. */
+  projectAdmin: boolean;
   /** Только client-роль security (ИБ): ни superuser, ни ролей в проектах. */
   securityOnly: boolean;
   /** Может читать журнал аудита: superuser или security. */
@@ -37,7 +39,12 @@ const ITEMS: NavItem[] = [
   { href: "/instances", label: "Инстансы", icon: Database },
   { href: "/runs", label: "Журнал", icon: ScrollText },
   { href: "/pairing", label: "Pairing", icon: Link2, show: ({ superuser }) => superuser },
-  { href: "/projects", label: "Проекты", icon: FolderKanban, show: ({ superuser }) => superuser },
+  {
+    href: "/projects",
+    label: "Проекты",
+    icon: FolderKanban,
+    show: ({ superuser, projectAdmin }) => superuser || projectAdmin,
+  },
   {
     href: "/mapping",
     label: "Сопоставление",

@@ -31,7 +31,7 @@
 | Leader election, фоновые циклы | `k8s/leader.go`, `cmd/gemini/main.go` (`runServe`, `background`, `leaseName`) |
 | Env-переменные backend'а | `config/config.go`, пример `backend/.env.local.example` |
 | Журнал аудита (запись, страница, экспорт, роль security) | запись — `api/audit.go` (`audit`, `auditDenied` для 403, `clientIP`), чтение — `store/audit.go` (`EachAudit`, имя объекта по target), UI — `frontend/app/audit`, подписи действий — `frontend/lib/audit.ts` (новое действие → добавить туда) |
-| Уведомления (провалы/успехи) | `notify/notify.go`, фильтр по настройкам — `operator.go` `notifyFailure`/`notifySuccess` |
+| Уведомления (каналы проектов, глобальные, системный бот) | отправка — `notify/notify.go` (новый провайдер: `Send`, `BotName`, `ValidToken`, `ValidTarget`; УЦ Минцифры — только в клиенте MAX, `notify/certs/`), выбор каналов — `operator.go:dispatchNotification`, `store/notifications.go`; API — `api/notifications.go`; UI — `components/notification-channels.tsx`, `app/projects/[name]/notifications` |
 | Настройки (TTL, таймауты, scheduling, сроки хранения) | `api/settings.go`, `store/settings.go`, миграции 004/006/015/016/022/023 |
 | Helm | `helm/gemini/{values.yaml,templates/}`, описание values — `helm/gemini/README.md`, примеры `helm/examples/` |
 | CI/релиз | тесты и линт — `.github/workflows/ci.yml` (push в main; из release.yml гейтит сборку), релиз — `.github/workflows/release.yml` (тег `vX.Y.Z`) |
@@ -53,7 +53,7 @@
 `Instance` (сервер PostgreSQL) → `Database` (бэкапится/нет, cron) → `BackupRun` (kind dump|restore, trigger,
 `event_key` для идемпотентности). Target: `DatabaseMapping` (source external_id ↔ локальная `Database`,
 `s3_prefix`, `target_owner`). `HeadPairing`/`PairingSecret` — связь source↔target. `S3Bucket`, `Settings`, `Project` (RBAC; `instances.project`).
-Миграции пронумерованы `001…029`; следующая — `030_*.sql`.
+Миграции пронумерованы `001…030`; следующая — `031_*.sql`.
 
 ### Потоки
 - **Backup (source):** CronJob/ручной запуск → `StartDump` → Job → `runDump` → S3 (`.dump`, `.sha256`, extensions)

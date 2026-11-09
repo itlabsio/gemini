@@ -78,10 +78,6 @@ export interface Settings {
   job_ttl_minutes: number;
   /** Сколько минут ждать старта пода Job'а, потом прогон → failed */
   job_pod_start_timeout_minutes: number;
-  /** Слать уведомления о провалах dump/restore (по умолчанию да) */
-  notify_on_failure: boolean;
-  /** Слать уведомления об успешных dump/restore (по умолчанию нет) */
-  notify_on_success: boolean;
   /** Сколько дней хранить журнал аудита */
   audit_retention_days: number;
   /** Сколько дней хранить историю прогонов (активные и последний по базе — всегда) */
@@ -209,6 +205,33 @@ export interface Candidate {
 }
 
 export type ProjectRole = "viewer" | "operator" | "admin";
+
+export type NotificationProvider = "telegram" | "max";
+
+export interface NotificationChannel {
+  id: string;
+  /** Пусто — глобальный канал */
+  project: string;
+  name: string;
+  provider: NotificationProvider;
+  /** false — канал шлёт через системного бота */
+  has_own_bot: boolean;
+  /** Имя своего бота; у системного пусто */
+  bot_name: string;
+  chat_id: string;
+  thread_id: string;
+  on_failure: boolean;
+  on_success: boolean;
+  enabled: boolean;
+  created_by: string;
+  created_at: string;
+}
+
+export interface Notifications {
+  channels: NotificationChannel[];
+  /** Настроенные системные боты: провайдер → имя бота */
+  system_bots: Record<string, string>;
+}
 
 export interface Project {
   name: string;

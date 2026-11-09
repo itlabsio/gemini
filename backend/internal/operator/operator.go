@@ -434,32 +434,34 @@ func (o *Operator) runEvent(ctx context.Context, db *model.Database, kind model.
 	if db != nil {
 		e.Database = db.DBName
 		if inst, err := o.store.GetInstance(ctx, db.InstanceID); err == nil {
-			e.Instance = inst.Name
+			e.Instance, e.Project = inst.Name, inst.Project
 		}
 	}
 	return e
 }
 
-// notifyFailure / notifySuccess шлют уведомление, если такой исход включён в
-// настройках. Настройки не прочитались — шлём только провалы (дефолт).
+// notifyFailure / notifySuccess шлют уведомление в глобальные каналы и каналы
+// проекта, где такой исход включён.
 func (o *Operator) notifyFailure(ctx context.Context, e notify.Event) {
-	if o.notifier == nil {
-		return
-	}
-	if st, err := o.store.GetSettings(ctx); err == nil && !st.NotifyOnFailure {
-		return
-	}
-	_ = o.notifier.Failure(ctx, e)
+	o.dispatchNotification(ctx, e, true, notify.FailureText(e))
 }
 
 func (o *Operator) notifySuccess(ctx context.Context, e notify.Event) {
+	o.dispatchNotification(ctx, e, false, notify.SuccessText(e))
+}
+
+func (o *Operator) dispatchNotification(ctx context.Context, e notify.Event, failure bool, text string) {
 	if o.notifier == nil {
 		return
 	}
-	if st, err := o.store.GetSettings(ctx); err != nil || !st.NotifyOnSuccess {
+	channels, err := o.store.NotificationTargets(ctx, e.Project, failure)
+	if err != nil {
+		log.Printf("notify: load channels: %v", err)
 		return
 	}
-	_ = o.notifier.Success(ctx, e)
+	for _, ch := range channels {
+		o.notifier.Dispatch(ch, text)
+	}
 }
 
 // Watch раз в 10 секунд сверяет активные прогоны с состоянием Job'ов в кластере.

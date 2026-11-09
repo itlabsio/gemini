@@ -9,8 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Field } from "@/components/ui/field";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import {
   Card,
   CardContent,
@@ -79,8 +77,6 @@ export function SettingsForm({ initial, headRole }: { initial: Settings; headRol
   const [podStart, setPodStart] = useState(
     String(initial.job_pod_start_timeout_minutes),
   );
-  const [onFailure, setOnFailure] = useState(initial.notify_on_failure);
-  const [onSuccess, setOnSuccess] = useState(initial.notify_on_success);
   const [auditDays, setAuditDays] = useState(String(initial.audit_retention_days));
   const [runsDays, setRunsDays] = useState(String(initial.runs_retention_days));
   const [downloadTtl, setDownloadTtl] = useState(String(initial.download_url_ttl_minutes));
@@ -110,8 +106,6 @@ export function SettingsForm({ initial, headRole }: { initial: Settings; headRol
     sched.trim() !== initialSched.trim() ||
     ttl.trim() !== String(initial.job_ttl_minutes) ||
     podStart.trim() !== String(initial.job_pod_start_timeout_minutes) ||
-    onFailure !== initial.notify_on_failure ||
-    onSuccess !== initial.notify_on_success ||
     auditDays.trim() !== String(initial.audit_retention_days) ||
     runsDays.trim() !== String(initial.runs_retention_days) ||
     downloadTtl.trim() !== String(initial.download_url_ttl_minutes);
@@ -140,8 +134,6 @@ export function SettingsForm({ initial, headRole }: { initial: Settings; headRol
         default_pod_scheduling: scheduling,
         job_ttl_minutes: Number(ttl.trim()),
         job_pod_start_timeout_minutes: Number(podStart.trim()),
-        notify_on_failure: onFailure,
-        notify_on_success: onSuccess,
         audit_retention_days: Number(auditDays.trim()),
         runs_retention_days: Number(runsDays.trim()),
         download_url_ttl_minutes: Number(downloadTtl.trim()),
@@ -316,35 +308,6 @@ export function SettingsForm({ initial, headRole }: { initial: Settings; headRol
               placeholder="5"
             />
           </Field>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Уведомления</CardTitle>
-          <CardDescription>
-            О каких исходах dump/restore сообщать. Канал (Slack / Telegram)
-            задаётся в чарте (notify.*); если он не включён, уведомления не
-            отправляются
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <Switch
-              id="notify_on_failure"
-              checked={onFailure}
-              onCheckedChange={setOnFailure}
-            />
-            <Label htmlFor="notify_on_failure">Провалы</Label>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              id="notify_on_success"
-              checked={onSuccess}
-              onCheckedChange={setOnSuccess}
-            />
-            <Label htmlFor="notify_on_success">Успешные прогоны</Label>
-          </div>
         </CardContent>
       </Card>
 

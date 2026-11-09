@@ -44,7 +44,6 @@ func TestValidate(t *testing.T) {
 			c.Vault = VaultConfig{Enabled: true, Address: "https://v", AuthMethod: "k8s-prod", K8sRole: "gemini"}
 		}, "VAULT_K8S_MOUNT"},
 		{"vault disabled ignores fields", func(c *Config) { c.Vault = VaultConfig{AuthMethod: "garbage"} }, ""},
-		{"notify no webhook", func(c *Config) { c.Notify = NotifyConfig{Enabled: true} }, "NOTIFY_WEBHOOK_URL"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

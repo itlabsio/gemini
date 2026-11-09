@@ -33,11 +33,6 @@ data:
   VAULT_K8S_ROLE: {{ .Values.vault.role | quote }}
   {{- end }}
 
-  NOTIFY_ENABLED: {{ .Values.notify.enabled | quote }}
-  {{- if .Values.notify.enabled }}
-  NOTIFY_PROVIDER: {{ .Values.notify.provider | quote }}
-  {{- end }}
-
   POLL_INTERVAL: {{ .Values.poller.interval | quote }}
   PEER_RETRY_INITIAL_DELAY: {{ .Values.peerRetry.initialDelay | quote }}
   PEER_RETRY_MAX_DELAY: {{ .Values.peerRetry.maxDelay | quote }}
