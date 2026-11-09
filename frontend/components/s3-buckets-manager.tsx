@@ -177,7 +177,7 @@ export function S3BucketsManager({ buckets, headRole }: { buckets: S3Bucket[]; h
                   </TableCell>
                   <TableCell className="text-right whitespace-nowrap">
                     <Button
-                      variant="ghost"
+                      variant="ghost-success"
                       size="icon"
                       aria-label="Проверить доступность"
                       title="Проверить доступность"
@@ -189,7 +189,7 @@ export function S3BucketsManager({ buckets, headRole }: { buckets: S3Bucket[]; h
                     {!b.built_in && (
                       <>
                         <Button
-                          variant="ghost"
+                          variant="ghost-warning"
                           size="icon"
                           aria-label="Изменить"
                           title="Изменить бакет"

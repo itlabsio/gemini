@@ -25,10 +25,16 @@ const buttonVariants = cva(
         secondary:
           "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/70",
         ghost: "hover:bg-accent hover:text-accent-foreground",
-        // Опасное действие в строке таблицы: приглушено, пока на него не наведут.
+        // Действия в строке таблицы: выглядят как ghost, цвет появляется при наведении.
         "ghost-destructive":
-          "text-muted-foreground hover:bg-destructive/10 hover:text-destructive " +
+          "hover:bg-destructive/10 hover:text-destructive " +
           "focus-visible:text-destructive focus-visible:ring-destructive/40",
+        "ghost-warning":
+          "hover:bg-warning/10 hover:text-warning " +
+          "focus-visible:text-warning focus-visible:ring-warning/40",
+        "ghost-success":
+          "hover:bg-success/10 hover:text-success " +
+          "focus-visible:text-success focus-visible:ring-success/40",
         link: "text-foreground underline-offset-4 hover:underline",
       },
       size: {

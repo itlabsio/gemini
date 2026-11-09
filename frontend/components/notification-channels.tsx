@@ -238,7 +238,7 @@ export function NotificationChannels({
                       onCheckedChange={(v) => setEnabled(c, v)}
                     />
                     <Button
-                      variant="ghost"
+                      variant="ghost-success"
                       size="icon"
                       aria-label="Отправить тестовое сообщение"
                       title="Отправить тестовое сообщение"
@@ -248,7 +248,7 @@ export function NotificationChannels({
                       <PlugZap className={testing === c.id ? "animate-pulse" : undefined} />
                     </Button>
                     <Button
-                      variant="ghost"
+                      variant="ghost-warning"
                       size="icon"
                       aria-label="Изменить"
                       title="Изменить канал"
