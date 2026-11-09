@@ -11,7 +11,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { getMe, getPublicConfig } from "@/lib/api";
 import { projectsAtLeast } from "@/lib/rbac";
 import { isSecurityOnly } from "@/lib/audit";
-import type { HeadRole } from "@/lib/types";
+import type { HeadRole, Me } from "@/lib/types";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -42,7 +42,7 @@ export default async function RootLayout({
   let projectAdmin = false;
   let security = false;
   let securityOnly = false;
-  let roleLabel: string | undefined;
+  let projects: Me["projects"] = {};
   if (authed && session?.accessToken) {
     try {
       const me = await getMe();
@@ -50,12 +50,7 @@ export default async function RootLayout({
       projectAdmin = projectsAtLeast(me, "admin").length > 0;
       security = me.security;
       securityOnly = isSecurityOnly(me);
-      roleLabel = me.superuser
-        ? "superuser"
-        : [
-            ...(me.security ? ["security"] : []),
-            ...Object.entries(me.projects ?? {}).map(([p, r]) => `${p}: ${r}`),
-          ].join(", ");
+      projects = me.projects ?? {};
     } catch {
       /* backend недоступен — покажем базовый layout */
     }
@@ -105,7 +100,9 @@ export default async function RootLayout({
                       <div className="shrink-0">
                         <UserMenu
                           email={session.user.email ?? "—"}
-                          role={roleLabel}
+                          superuser={superuser}
+                          security={security}
+                          projects={projects}
                         />
                       </div>
                     </>
