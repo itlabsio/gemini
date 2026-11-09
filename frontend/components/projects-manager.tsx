@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Bell, Plus, Trash2, Unlink } from "lucide-react";
+import { Bell, Plus, TagX, Trash2 } from "lucide-react";
 import type { Project } from "@/lib/types";
 import {
   createProjectAction,
@@ -142,14 +142,14 @@ export function ProjectsManager({ projects }: { projects: Project[] }) {
                     </Button>
                     {p.managed_by === "terraform" && (
                       <Button
-                        variant="ghost-destructive"
+                        variant="ghost-orange"
                         size="icon-sm"
                         aria-label="Снять метку Terraform"
                         title="Снять метку Terraform"
                         disabled={pending}
                         onClick={() => unmanage(p.name)}
                       >
-                        <Unlink />
+                        <TagX />
                       </Button>
                     )}
                     <Button

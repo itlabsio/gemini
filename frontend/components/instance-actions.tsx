@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { MoreHorizontal, Pencil, Trash2, Unlink } from "lucide-react";
+import { MoreHorizontal, Pencil, TagX, Trash2 } from "lucide-react";
 import { deleteInstanceAction, unmanageInstanceAction } from "@/app/instances/actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -76,8 +76,12 @@ export function InstanceActions({
             </Link>
           </DropdownMenuItem>
           {canUnmanage && (
-            <DropdownMenuItem disabled={pending} onSelect={onUnmanage}>
-              <Unlink />
+            <DropdownMenuItem
+              disabled={pending}
+              onSelect={onUnmanage}
+              className="focus:bg-orange-500/10 focus:text-orange-500 focus:[&_svg]:text-orange-500"
+            >
+              <TagX />
               Снять метку Terraform
             </DropdownMenuItem>
           )}
