@@ -80,4 +80,5 @@
 
 ## Правила работы в этом репо
 - `kubectl` / `yc` локально не запускать без явного согласия пользователя (см. глобальный CLAUDE.md).
-- Коммиты: короткий conventional subject без тела; автор — `ksrt12group@gmail.com`.
+- Коммиты: conventional subject + тело (что было не так и что сделано, для коллег),
+  в конце трейлер `Co-Authored-By: Claude ...`; автор — `ksrt12group@gmail.com`.
