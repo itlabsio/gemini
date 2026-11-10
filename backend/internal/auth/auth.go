@@ -165,6 +165,9 @@ func (v *Verifier) parse(raw string) (jwt.Token, error) {
 		jwt.WithKeySet(v.keyset),
 		jwt.WithValidate(true),
 		jwt.WithIssuer(v.cfg.IssuerURL),
+		// Дрейф часов между Keycloak и подом: свежий токен с iat/nbf чуть в
+		// будущем не должен давать 401.
+		jwt.WithAcceptableSkew(10*time.Second),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("parse: %w", err)
