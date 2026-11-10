@@ -34,7 +34,14 @@ func (s *Server) webhookBackupReady(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m, err := s.d.Store.MappingBySourceExternalID(r.Context(), req.SourceDatabaseExternalID)
+	// Сопоставление — только в паре, чей HMAC сошёлся: другой спаренный source
+	// не может запустить restore чужой базы, назвав её external id.
+	pairingID := peer.PeerPairingID(r.Context())
+	if pairingID == "" {
+		writeError(w, http.StatusUnauthorized, "unresolved peer pairing")
+		return
+	}
+	m, err := s.d.Store.MappingByPairingExternal(r.Context(), pairingID, req.SourceDatabaseExternalID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeJSON(w, http.StatusOK, map[string]string{"status": "ignored", "reason": "no mapping for this source database"})

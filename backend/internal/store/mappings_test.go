@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"slices"
 	"testing"
 
@@ -88,8 +89,11 @@ func TestRestoreMappingSelection(t *testing.T) {
 	}
 
 	// Webhook ищет сопоставление без оглядки на флаги (их проверяет StartRestore).
-	if m, err := s.MappingBySourceExternalID(ctx, "restoresel-manual"); err != nil || mapped[m.ID] != "manual" {
-		t.Errorf("MappingBySourceExternalID(manual) = %v, %v", m, err)
+	if m, err := s.MappingByPairingExternal(ctx, pairingID, "restoresel-manual"); err != nil || mapped[m.ID] != "manual" {
+		t.Errorf("MappingByPairingExternal(manual) = %v, %v", m, err)
+	}
+	if _, err := s.MappingByPairingExternal(ctx, "00000000-0000-0000-0000-000000000000", "restoresel-manual"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("MappingByPairingExternal(other pairing) err = %v, want ErrNotFound", err)
 	}
 
 	// Предохранитель: авто нет, шаблоны остаются.

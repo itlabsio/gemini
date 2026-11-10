@@ -59,18 +59,12 @@ func (s *Store) GetMapping(ctx context.Context, id string) (*model.DatabaseMappi
 		`SELECT `+mappingCols+` FROM database_mappings WHERE id = $1`, id))
 }
 
-// MappingByPairingExternal — сопоставление по ключу upsert'а (pairing, source external id).
+// MappingByPairingExternal — сопоставление по ключу upsert'а (pairing, source
+// external id); им же webhook backup-ready на target находит базу.
 func (s *Store) MappingByPairingExternal(ctx context.Context, pairingID, externalID string) (*model.DatabaseMapping, error) {
 	return scanMapping(s.pool.QueryRow(ctx,
 		`SELECT `+mappingCols+` FROM database_mappings
 		 WHERE head_pairing_id = $1 AND source_database_external_id = $2`, pairingID, externalID))
-}
-
-// MappingBySourceExternalID нужен обработчику webhook backup-ready на DR.
-func (s *Store) MappingBySourceExternalID(ctx context.Context, externalID string) (*model.DatabaseMapping, error) {
-	return scanMapping(s.pool.QueryRow(ctx,
-		`SELECT `+mappingCols+` FROM database_mappings
-		 WHERE source_database_external_id = $1`, externalID))
 }
 
 // MappingByTargetDatabaseID нужен для обратного webhook restore-status на Source.
