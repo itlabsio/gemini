@@ -25,9 +25,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # (см. backend/internal/jobrunner/pgclient.go). Набор мажоров держать синхронно
 # с alpine (сейчас доступны 16/17/18).
 FROM alpine:3 AS final
-ADD "https://storage.yandexcloud.net/cloud-certs/CA.pem" /usr/local/share/ca-certificates/YandexCA.crt
-ADD "https://storage.dbaas.selcloud.ru/CA.pem" /usr/local/share/ca-certificates/SelectelDBaaSCA.crt
-ADD "https://storage.yandexcloud.net/itlabs-ca/devops/root.crt" /usr/local/share/ca-certificates/itlabs-devops-root.crt
+# Внешние CA в системный trust store — с пиннингом хэша: подмена файла в бакете
+# не должна давать доверенный корень. Обновили CA у провайдера — пересчитать sha256.
+ADD --checksum=sha256:6d148f85b5213445b23ad22ff45e47e1aa2be968f183f9bd6ff39de54d47a8ef "https://storage.yandexcloud.net/cloud-certs/CA.pem" /usr/local/share/ca-certificates/YandexCA.crt
+ADD --checksum=sha256:7836723bfea3db2ebe418779f60f1ddd8ed6a50e904c9ba67b7db13a2a417ce7 "https://storage.dbaas.selcloud.ru/CA.pem" /usr/local/share/ca-certificates/SelectelDBaaSCA.crt
+ADD --checksum=sha256:abc6c2df00dc7a6cc48df3f794a19b00afdf74024e3fa343eae4ebd9fafbd08d "https://storage.yandexcloud.net/itlabs-ca/devops/root.crt" /usr/local/share/ca-certificates/itlabs-devops-root.crt
 RUN apk update && \
     apk upgrade && \
     apk add ca-certificates postgresql16-client postgresql17-client postgresql18-client tzdata && \
