@@ -152,8 +152,9 @@ func downloadDump(ctx context.Context, e Env, dumpPath string) error {
 }
 
 // restoreRecreate: RENAME старую базу, создать новую, накатить, выставить
-// владельца, снести старую. Всё до DROP обратимо — при ошибке старая база
-// остаётся под именем <target>_old_<ts>, прогон падает.
+// владельца, снести старую. Всё до DROP обратимо — при ошибке после RENAME
+// откатываемся (rollbackRecreate): новая база сносится, старая возвращает
+// имя; не вышло — старая остаётся как <target>_old_<ts>. Прогон падает.
 //
 // Если target-базы нет (удалили руками или прошлый прогон упал между RENAME и
 // CREATE), просто создаём её: переименовывать и сносить нечего.
@@ -186,13 +187,13 @@ func restoreRecreate(ctx context.Context, e Env, target, dumpPath string) error 
 		createSQL += fmt.Sprintf(` OWNER %s`, quoteIdent(e.TargetDBOwner))
 	}
 	if err := psqlExec(ctx, e, "postgres", createSQL+";"); err != nil {
-		return fmt.Errorf("create database %s%s: %w", target, kept, err)
+		return rollbackRecreate(ctx, e, target, oldName, exists, false, fmt.Errorf("create database %s%s: %w", target, kept, err))
 	}
 	if err := ensureExtensions(ctx, e, target); err != nil {
-		return fmt.Errorf("ensure extensions in %s%s: %w", target, kept, err)
+		return rollbackRecreate(ctx, e, target, oldName, exists, true, fmt.Errorf("ensure extensions in %s%s: %w", target, kept, err))
 	}
 	if err := pgRestore(ctx, e, target, dumpPath, false); err != nil {
-		return fmt.Errorf("restore into %s%s: %w", target, kept, err)
+		return rollbackRecreate(ctx, e, target, oldName, exists, true, fmt.Errorf("restore into %s%s: %w", target, kept, err))
 	}
 
 	if exists {
@@ -204,6 +205,53 @@ func restoreRecreate(ctx context.Context, e Env, target, dumpPath string) error 
 	}
 	log.Printf("restore: done (recreate)")
 	return nil
+}
+
+// rollbackTimeout — свой предел для отката: ctx прогона к этому моменту может
+// быть уже отменён (CancelRun → SIGTERM поду).
+const rollbackTimeout = 2 * time.Minute
+
+// rollbackRecreate — best-effort откат неудачного recreate: снести пустую новую
+// базу (created) и вернуть прежней копии исходное имя (exists). Иначе под
+// продовым именем остаётся пустая база, а данные — в <target>_old_<ts>, которую
+// UI скрывает. Возвращает cause с приписанным исходом отката.
+func rollbackRecreate(ctx context.Context, e Env, target, oldName string, exists, created bool, cause error) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
+	defer cancel()
+	if created {
+		if err := terminateBackends(ctx, e, "postgres", target); err != nil {
+			log.Printf("restore: rollback: terminate backends of %s: %v", target, err)
+		}
+	}
+	kept := ""
+	if exists {
+		kept = fmt.Sprintf(" (old kept as %s)", oldName)
+	}
+	for _, sql := range rollbackSQL(target, oldName, exists, created) {
+		if err := psqlExec(ctx, e, "postgres", sql); err != nil {
+			return fmt.Errorf("%w; rollback failed at %s: %v%s", cause, sql, err, kept)
+		}
+	}
+	switch {
+	case exists:
+		log.Printf("restore: rolled back, %s restored under original name", oldName)
+		return fmt.Errorf("%w; rolled back: old restored under original name", cause)
+	case created:
+		return fmt.Errorf("%w; rolled back: empty %s dropped", cause, target)
+	}
+	return cause
+}
+
+// rollbackSQL — шаги отката recreate по порядку: DROP новой базы, RENAME old → target.
+func rollbackSQL(target, oldName string, exists, created bool) []string {
+	var sqls []string
+	if created {
+		sqls = append(sqls, fmt.Sprintf(`DROP DATABASE %s;`, quoteIdent(target)))
+	}
+	if exists {
+		sqls = append(sqls, fmt.Sprintf(`ALTER DATABASE %s RENAME TO %s;`, quoteIdent(oldName), quoteIdent(target)))
+	}
+	return sqls
 }
 
 // restoreInPlace: pg_restore --clean --if-exists прямо в существующую базу.

@@ -45,7 +45,11 @@ func main() {
 
 	switch cmd {
 	case "dump", "restore":
-		if err := jobrunner.Run(context.Background(), cmd); err != nil {
+		// SIGTERM (CancelRun удаляет Job) отменяет ctx: restore успевает откатить
+		// recreate, пока под не прибит SIGKILL.
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer stop()
+		if err := jobrunner.Run(ctx, cmd); err != nil {
 			log.Fatalf("%s: %v", cmd, err)
 		}
 		return
