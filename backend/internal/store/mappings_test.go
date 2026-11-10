@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/model"
 )
 
 // Флаг базы на Target — только автовосстановление; предохранитель инстанса

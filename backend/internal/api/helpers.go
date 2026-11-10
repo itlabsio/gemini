@@ -7,8 +7,8 @@ import (
 
 	"github.com/robfig/cron/v3"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/auth"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/storage"
+	"github.com/itlabsio/gemini/backend/internal/auth"
+	"github.com/itlabsio/gemini/backend/internal/storage"
 )
 
 var errVaultDisabled = errors.New("vault integration is disabled on this head")

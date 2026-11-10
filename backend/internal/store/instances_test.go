@@ -8,8 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/secretcrypto"
+	"github.com/itlabsio/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/secretcrypto"
 )
 
 func testStore(t *testing.T) (*Store, context.Context) {

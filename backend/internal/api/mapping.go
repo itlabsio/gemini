@@ -10,8 +10,8 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/auth"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/store"
+	"github.com/itlabsio/gemini/backend/internal/auth"
+	"github.com/itlabsio/gemini/backend/internal/store"
 )
 
 // candidate — база Source, доступная для сопоставления (без секретов).

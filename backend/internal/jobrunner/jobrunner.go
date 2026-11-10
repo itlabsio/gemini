@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/storage"
+	"github.com/itlabsio/gemini/backend/internal/storage"
 )
 
 // Env — распарсенное окружение Job'а.

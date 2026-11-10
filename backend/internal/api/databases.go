@@ -7,12 +7,12 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/auth"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/k8s"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/operator"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/storage"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/store"
+	"github.com/itlabsio/gemini/backend/internal/auth"
+	"github.com/itlabsio/gemini/backend/internal/k8s"
+	"github.com/itlabsio/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/operator"
+	"github.com/itlabsio/gemini/backend/internal/storage"
+	"github.com/itlabsio/gemini/backend/internal/store"
 )
 
 func (s *Server) listDatabases(w http.ResponseWriter, r *http.Request) {

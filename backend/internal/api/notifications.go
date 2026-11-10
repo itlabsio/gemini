@@ -11,10 +11,10 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/auth"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/notify"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/store"
+	"github.com/itlabsio/gemini/backend/internal/auth"
+	"github.com/itlabsio/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/notify"
+	"github.com/itlabsio/gemini/backend/internal/store"
 )
 
 // channelScope — проект из пути (” — глобальные каналы) и проверка роли admin в нём.

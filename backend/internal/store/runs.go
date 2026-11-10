@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/model"
 )
 
 const runCols = `id, database_id, kind, trigger, status, k8s_job_name, s3_object_key,

@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5" //nolint:revive // используется через тип pgx.Row
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/model"
 )
 
 const pairingCols = `id, peer_role, peer_url, status, peer_public_key, established_at, created_at`

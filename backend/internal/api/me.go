@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"slices"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/auth"
+	"github.com/itlabsio/gemini/backend/internal/auth"
 )
 
 // me отдаёт личность, superuser-флаг и роли по проектам текущего пользователя — фронт использует это для

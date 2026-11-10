@@ -5,7 +5,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/model"
 )
 
 const mappingCols = `id, head_pairing_id, source_database_external_id, source_db_name,

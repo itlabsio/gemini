@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/model"
 )
 
 func TestListAudit(t *testing.T) {

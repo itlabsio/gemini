@@ -1,4 +1,4 @@
-module gl.sdvor.com/devops/docker/gemini/backend
+module github.com/itlabsio/gemini/backend
 
 go 1.27.3
 

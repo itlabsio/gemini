@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/secretcrypto"
+	"github.com/itlabsio/gemini/backend/internal/secretcrypto"
 )
 
 // ErrNotFound возвращается, когда сущность не найдена.

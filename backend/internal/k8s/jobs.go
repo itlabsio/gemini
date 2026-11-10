@@ -14,7 +14,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/storage"
+	"github.com/itlabsio/gemini/backend/internal/storage"
 )
 
 // Phase — упрощённый статус Job'а для watcher'а.

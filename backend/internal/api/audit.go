@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/auth"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/store"
+	"github.com/itlabsio/gemini/backend/internal/auth"
+	"github.com/itlabsio/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/store"
 )
 
 // actionAccessDenied — отказ в доступе (403) к /api/*.

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/config"
+	"github.com/itlabsio/gemini/backend/internal/config"
 )
 
 func TestInitPairingRequiresHTTPS(t *testing.T) {

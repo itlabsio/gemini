@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/storage"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/store"
+	"github.com/itlabsio/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/storage"
+	"github.com/itlabsio/gemini/backend/internal/store"
 )
 
 // RunPoller (голова DR) — fallback-поллинг S3: каждые cfg.PollInterval обходит

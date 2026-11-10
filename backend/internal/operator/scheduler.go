@@ -7,8 +7,8 @@ import (
 	"math/rand/v2"
 	"time"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/k8s"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/k8s"
+	"github.com/itlabsio/gemini/backend/internal/model"
 )
 
 const (

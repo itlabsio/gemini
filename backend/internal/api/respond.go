@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/store"
+	"github.com/itlabsio/gemini/backend/internal/store"
 )
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

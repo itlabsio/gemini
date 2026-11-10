@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/model"
 )
 
 // GetSettings возвращает singleton-строку глобальных дефолтов.

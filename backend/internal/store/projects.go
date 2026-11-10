@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/model"
 )
 
 // ListProjects — проекты с числом привязанных инстансов.

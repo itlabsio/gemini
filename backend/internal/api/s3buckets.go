@@ -8,9 +8,9 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/storage"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/store"
+	"github.com/itlabsio/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/storage"
+	"github.com/itlabsio/gemini/backend/internal/store"
 )
 
 // listS3Buckets — встроенный бакет из env (если задан) + бакеты из БД, без секретов.

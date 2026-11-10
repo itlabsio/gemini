@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/model"
 )
 
 // BuiltInID — id бакета из env (Helm values.s3); в БД его нет.

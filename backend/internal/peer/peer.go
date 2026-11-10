@@ -23,8 +23,8 @@ import (
 	"strconv"
 	"time"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/config"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/config"
+	"github.com/itlabsio/gemini/backend/internal/model"
 )
 
 const (

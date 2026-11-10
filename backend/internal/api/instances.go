@@ -12,11 +12,11 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/auth"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/discovery"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/store"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/vault"
+	"github.com/itlabsio/gemini/backend/internal/auth"
+	"github.com/itlabsio/gemini/backend/internal/discovery"
+	"github.com/itlabsio/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/store"
+	"github.com/itlabsio/gemini/backend/internal/vault"
 )
 
 // validSSLModes — режимы libpq, которые голова готова прокидывать в DSN/PGSSLMODE.

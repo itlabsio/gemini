@@ -15,7 +15,7 @@ import (
 
 	vaultapi "github.com/hashicorp/vault/api"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/config"
+	"github.com/itlabsio/gemini/backend/internal/config"
 )
 
 // Client — тонкая обёртка над Vault API с ленивой аутентификацией.

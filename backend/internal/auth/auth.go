@@ -17,7 +17,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/config"
+	"github.com/itlabsio/gemini/backend/internal/config"
 )
 
 // Role — роль пользователя внутри проекта.

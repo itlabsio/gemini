@@ -7,9 +7,9 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/k8s"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/store"
+	"github.com/itlabsio/gemini/backend/internal/k8s"
+	"github.com/itlabsio/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/store"
 )
 
 // Границы TTL завершённых Job'ов (минуты) — как CHECK в миграции 015. Минимум —

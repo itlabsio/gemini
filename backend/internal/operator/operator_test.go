@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/config"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/peer"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/storage"
+	"github.com/itlabsio/gemini/backend/internal/config"
+	"github.com/itlabsio/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/peer"
+	"github.com/itlabsio/gemini/backend/internal/storage"
 )
 
 // fakeS3 — минимальный S3 для GET/HEAD объектов одного бакета: ровно то, что

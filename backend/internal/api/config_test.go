@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/config"
+	"github.com/itlabsio/gemini/backend/internal/config"
 )
 
 // /api/config должен отвечать без авторизации — фронт зовёт его до логина.

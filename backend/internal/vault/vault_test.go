@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/config"
+	"github.com/itlabsio/gemini/backend/internal/config"
 )
 
 // fakeVault отдаёт секреты по путям Vault API (/v1/<path>). Значение — уже

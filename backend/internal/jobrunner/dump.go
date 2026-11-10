@@ -15,7 +15,7 @@ import (
 
 	"github.com/minio/minio-go/v7"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/storage"
+	"github.com/itlabsio/gemini/backend/internal/storage"
 )
 
 // listExtensions читает расширения исходной базы (кроме plpgsql — он есть всегда).

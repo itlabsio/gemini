@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/model"
 )
 
 // Журнал прогонов для не-superuser видит только базы инстансов своих проектов.

@@ -14,14 +14,14 @@ import (
 	"strings"
 	"time"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/config"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/k8s"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/notify"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/peer"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/storage"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/store"
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/vault"
+	"github.com/itlabsio/gemini/backend/internal/config"
+	"github.com/itlabsio/gemini/backend/internal/k8s"
+	"github.com/itlabsio/gemini/backend/internal/model"
+	"github.com/itlabsio/gemini/backend/internal/notify"
+	"github.com/itlabsio/gemini/backend/internal/peer"
+	"github.com/itlabsio/gemini/backend/internal/storage"
+	"github.com/itlabsio/gemini/backend/internal/store"
+	"github.com/itlabsio/gemini/backend/internal/vault"
 )
 
 // Operator держит зависимости оркестрации.

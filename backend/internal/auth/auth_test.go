@@ -8,7 +8,7 @@ import (
 
 	"github.com/lestrrat-go/jwx/v3/jwt"
 
-	"gl.sdvor.com/devops/docker/gemini/backend/internal/config"
+	"github.com/itlabsio/gemini/backend/internal/config"
 )
 
 // Claims разбираются из реального JSON токена (а не из заранее собранных
