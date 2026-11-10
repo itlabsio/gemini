@@ -189,3 +189,7 @@ target → ввести URL source и код), завести инстансы P
 
 В pull request образы только собираются, чарт только линтуется на всех
 `helm/examples/values-*.yaml`.
+
+## Лицензия
+
+[Apache License 2.0](LICENSE). Copyright 2026 Stepan Kazakov.
