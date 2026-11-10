@@ -199,7 +199,9 @@ job:
   resources: {}
 
 rbac:
-  # -- Создавать ServiceAccount + namespaced Role/RoleBinding
+  # -- Создавать ServiceAccount + namespaced Role/RoleBinding. Role даёт backend'у
+  # get/list/create/delete на ВСЕ Secret'ы namespace (list по лейблу в k8s нет),
+  # поэтому Gemini ставится в отдельный namespace, без чужих секретов.
   create: true
   # -- Создавать ClusterRole/ClusterRoleBinding на чтение storageclasses
   storageClassRead: true

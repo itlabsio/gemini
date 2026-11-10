@@ -22,6 +22,9 @@ Job image: {{ include "gemini.job.image" . }}
 Если backend всё же пишет "pending migrations" — Job не отработал, смотрите его логи.
 {{- end }}
 
+Namespace {{ .Release.Namespace }} должен быть выделен под Gemini: Role backend'а читает
+и пишет все Secret'ы namespace (list по лейблу в k8s нет). Чужие секреты сюда не класть.
+
 Обязательные внешние Secret'ы (чарт их НЕ создаёт):
   {{ .Values.ownDatabase.existingSecret }}       -> POSTGRES_URL
   {{ .Values.encryptionKey.existingSecret }}     -> SECRET_ENCRYPTION_KEY (ровно 32 байта)
