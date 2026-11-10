@@ -7,15 +7,18 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/auth"
 	"gl.sdvor.com/devops/docker/gemini/backend/internal/model"
+	"gl.sdvor.com/devops/docker/gemini/backend/internal/store"
 )
 
 func selfSignedPEM(t *testing.T) string {
@@ -121,5 +124,24 @@ func TestRedactCredCoords(t *testing.T) {
 		if inst.AuthType != model.AuthVault {
 			t.Errorf("%s: auth_type должен остаться виден", name)
 		}
+	}
+}
+
+func TestChangedInstanceFields(t *testing.T) {
+	cur := &model.Instance{Name: "a", Host: "h", Port: 5432, Project: "p", ExcludedDatabases: []string{"x"}}
+	same := store.InstanceInput{Name: "a", Host: "h", Port: 5432, ExcludedDatabases: []string{"x"}}
+	if got := changedInstanceFields(cur, same); len(got) != 0 {
+		t.Errorf("unchanged input: got %v", got)
+	}
+	in := same
+	in.Host, in.PlainPassword, in.VaultPath = "h2", "secret", "kv/pg"
+	other := "q"
+	in.Project = &other
+	want := []string{"host", "plain_password", "vault_path", "project"}
+	if got := changedInstanceFields(cur, in); !slices.Equal(got, want) {
+		t.Errorf("changedInstanceFields = %v, want %v", got, want)
+	}
+	if s := fmt.Sprint(changedInstanceFields(cur, in)); strings.Contains(s, "secret") {
+		t.Errorf("password value leaked into audit: %s", s)
 	}
 }

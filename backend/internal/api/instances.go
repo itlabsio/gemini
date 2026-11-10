@@ -286,12 +286,19 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 	} else {
 		in.Project = nil
 	}
-	// Скачивание дампов — доступ к прод-данным: смену флага пишем в аудит отдельно.
-	var detail map[string]any
+	// В аудит — какие поля изменились (без значений: среди них пароль), а смену
+	// флага скачивания — ещё и значением: это доступ к прод-данным.
+	detail := map[string]any{}
+	if changed := changedInstanceFields(cur, in); len(changed) > 0 {
+		detail["changed"] = strings.Join(changed, ", ")
+	}
 	if in.Downloadable != nil && *in.Downloadable != cur.Downloadable {
-		detail = map[string]any{"downloadable": *in.Downloadable}
+		detail["downloadable"] = *in.Downloadable
 	} else {
 		in.Downloadable = nil
+	}
+	if len(detail) == 0 {
+		detail = nil
 	}
 	in.ManagedBy = managedBy(r)
 	inst, err := s.d.Store.UpdateInstance(r.Context(), id, in)
@@ -470,4 +477,33 @@ func (s *Server) checkVault(ctx context.Context, in store.InstanceInput) error {
 		return errVaultDisabled
 	}
 	return s.d.Vault.Check(ctx, in.VaultPath, in.VaultUsernameKey, in.VaultPasswordKey)
+}
+
+// changedInstanceFields — имена полей инстанса, которые меняет in, для аудита.
+// Пароль сравнить нельзя (хранится шифрованным): непустой — считается сменой.
+func changedInstanceFields(cur *model.Instance, in store.InstanceInput) []string {
+	var out []string
+	add := func(name string, changed bool) {
+		if changed {
+			out = append(out, name)
+		}
+	}
+	add("name", in.Name != cur.Name)
+	add("host", in.Host != cur.Host)
+	add("port", in.Port != cur.Port)
+	add("role", in.Role != cur.Role)
+	add("restore_mode", in.RestoreMode != cur.RestoreMode)
+	add("ssl_mode", in.SSLMode != cur.SSLMode)
+	add("ssl_root_cert", in.SSLRootCert != cur.SSLRootCert)
+	add("discovery_db", in.DiscoveryDB != cur.DiscoveryDB)
+	add("excluded_databases", !slices.Equal(in.ExcludedDatabases, cur.ExcludedDatabases))
+	add("auth_type", in.AuthType != cur.AuthType)
+	add("plain_username", in.PlainUsername != cur.PlainUsername)
+	add("plain_password", in.PlainPassword != "")
+	add("vault_path", in.VaultPath != cur.VaultPath)
+	add("vault_role", in.VaultRole != cur.VaultRole)
+	add("vault_username_key", in.VaultUsernameKey != cur.VaultUsernameKey)
+	add("vault_password_key", in.VaultPasswordKey != cur.VaultPasswordKey)
+	add("project", in.Project != nil && *in.Project != cur.Project)
+	return out
 }
