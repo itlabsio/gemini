@@ -151,3 +151,36 @@ func TestJobStatusReady(t *testing.T) {
 		}
 	}
 }
+
+func TestDumpReport(t *testing.T) {
+	const ns, job = "gemini", "gemini-dump-r1"
+	pod := func(code int32, msg string) *corev1.Pod {
+		return &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: job + "-x", Namespace: ns, Labels: map[string]string{"job-name": job}},
+			Status: corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{
+				Name: "dump", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: code, Message: msg}},
+			}}},
+		}
+	}
+	good := `{"key":"inst/db/x.dump","sha256":"ab","extensions_digest":"none"}` + "\n"
+	for _, tc := range []struct {
+		name    string
+		objs    []runtime.Object
+		wantKey string
+	}{
+		{"report", []runtime.Object{pod(0, good)}, "inst/db/x.dump"},
+		{"empty message", []runtime.Object{pod(0, "")}, ""},
+		{"garbage", []runtime.Object{pod(0, "dump: done")}, ""},
+		{"partial", []runtime.Object{pod(0, `{"key":"k"}`)}, ""},
+		{"failed pod", []runtime.Object{pod(1, good)}, ""},
+		{"no pods", nil, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Client{cs: fake.NewSimpleClientset(tc.objs...), namespace: ns}
+			r, err := c.DumpReport(context.Background(), job)
+			if (err == nil) != (tc.wantKey != "") || r.Key != tc.wantKey {
+				t.Errorf("DumpReport = (%+v, %v), want key %q", r, err, tc.wantKey)
+			}
+		})
+	}
+}

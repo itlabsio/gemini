@@ -3,6 +3,7 @@ package jobrunner
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -116,12 +117,13 @@ func runDump(ctx context.Context, e Env) error {
 	}
 	log.Printf("dump: sha256=%s", sum)
 
-	// Список расширений — один на все бакеты.
-	var exts []string
-	if exts, err = listExtensions(ctx, e); err != nil {
+	// Список расширений — один на все бакеты; extBody пустой — sidecar не льём.
+	var extBody []byte
+	if exts, err := listExtensions(ctx, e); err != nil {
 		log.Printf("dump: list extensions: %v (skip .extensions sidecar)", err)
 	} else if len(exts) > 0 {
 		log.Printf("dump: extensions: %s", strings.Join(exts, ", "))
+		extBody = []byte(strings.Join(exts, "\n") + "\n")
 	}
 
 	// Fan-out: копия во все бакеты, параллельно — время заливки равно самому
@@ -134,7 +136,7 @@ func runDump(ctx context.Context, e Env) error {
 	errs := make([]error, len(e.S3Buckets))
 	var wg sync.WaitGroup
 	for i, b := range e.S3Buckets {
-		wg.Go(func() { errs[i] = uploadDump(ctx, b, e.S3ObjectKey, dumpPath, sum, exts) })
+		wg.Go(func() { errs[i] = uploadDump(ctx, b, e.S3ObjectKey, dumpPath, sum, extBody) })
 	}
 	wg.Wait()
 	log.Printf("dump: upload to %d bucket(s) done in %s", len(e.S3Buckets), time.Since(uploadStarted).Round(time.Second))
@@ -152,13 +154,27 @@ func runDump(ctx context.Context, e Env) error {
 		log.Printf("dump: WARNING upload failed to %d of %d bucket(s): %s",
 			len(failed), len(e.S3Buckets), strings.Join(failed, ", "))
 	}
+	// Отчёт для подписи — в terminationMessage пода (доверенный канал, в отличие
+	// от бакета). Не записался — дамп останется неподписанным, инстанс сообщит.
+	if err := writeDumpReport(storage.DumpReport{
+		Key: e.S3ObjectKey, SHA256: sum, ExtensionsDigest: storage.ExtensionsDigest(extBody, len(extBody) > 0),
+	}); err != nil {
+		log.Printf("dump: WARNING cannot write termination message: %v (dump will stay unsigned)", err)
+	}
 	log.Printf("dump: done")
 	return nil
 }
 
+// writeDumpReport пишет отчёт в terminationMessagePath контейнера: kubelet
+// монтирует этот файл в под и после завершения кладёт его содержимое в статус.
+func writeDumpReport(r storage.DumpReport) error {
+	raw, _ := json.Marshal(r)
+	return os.WriteFile(orDefault(os.Getenv("TERMINATION_MESSAGE_PATH"), "/dev/termination-log"), raw, 0o644)
+}
+
 // uploadDump заливает дамп в один бакет: дамп → <key>.extensions → <key>.sha256.
 // Файл контрольной суммы — последним: это признак готовности для Target.
-func uploadDump(ctx context.Context, b storage.JobBucket, key, dumpPath, sum string, exts []string) error {
+func uploadDump(ctx context.Context, b storage.JobBucket, key, dumpPath, sum string, extBody []byte) error {
 	mc, err := b.Minio()
 	if err != nil {
 		return err
@@ -182,10 +198,9 @@ func uploadDump(ctx context.Context, b storage.JobBucket, key, dumpPath, sum str
 	}
 	log.Printf("dump: uploaded %s in %s, %s", b.Object(key), time.Since(started).Round(time.Second), throughput(fi.Size(), time.Since(started)))
 
-	if len(exts) > 0 {
-		body := []byte(strings.Join(exts, "\n") + "\n")
+	if len(extBody) > 0 {
 		if _, err := mc.PutObject(ctx, b.Bucket, key+".extensions",
-			bytes.NewReader(body), int64(len(body)),
+			bytes.NewReader(extBody), int64(len(extBody)),
 			minio.PutObjectOptions{ContentType: "text/plain"}); err != nil {
 			return fmt.Errorf("upload extension list: %w", err)
 		}

@@ -13,6 +13,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"gl.sdvor.com/devops/docker/gemini/backend/internal/storage"
 )
 
 // Phase — упрощённый статус Job'а для watcher'а.
@@ -175,6 +177,29 @@ func (c *Client) FailureDetail(ctx context.Context, jobName string) string {
 		}
 	}
 	return ""
+}
+
+// DumpReport — отчёт dump-Job'а из terminationMessage успешно завершившегося
+// контейнера (storage.DumpReport). Нет пода, сообщения или оно не разобралось —
+// ошибка: подписывать тогда нечего.
+func (c *Client) DumpReport(ctx context.Context, jobName string) (storage.DumpReport, error) {
+	pods, err := c.cs.CoreV1().Pods(c.namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: "job-name=" + jobName,
+	})
+	if err != nil {
+		return storage.DumpReport{}, err
+	}
+	for i := range pods.Items {
+		for _, cs := range pods.Items[i].Status.ContainerStatuses {
+			if t := cs.State.Terminated; t != nil && t.ExitCode == 0 {
+				if r, ok := storage.ParseDumpReport(t.Message); ok {
+					return r, nil
+				}
+				return storage.DumpReport{}, fmt.Errorf("pod %s: termination message is not a dump report", pods.Items[i].Name)
+			}
+		}
+	}
+	return storage.DumpReport{}, fmt.Errorf("job %s: no succeeded pod found", jobName)
 }
 
 // PodNotStarted проверяет, что у Job'а так и не запустился ни один под: подов

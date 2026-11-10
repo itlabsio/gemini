@@ -732,30 +732,32 @@ func (o *Operator) onRunSucceeded(ctx context.Context, run model.BackupRun, js *
 	switch run.Kind {
 	case model.KindDump:
 		if o.cfg.IsSource() {
-			// scheduled-прогон не знал ключ заранее (раннер сгенерировал сам) —
-			// достаём его по самому свежему дампу в префиксе; sha — из <key>.sha256.
-			key := updated.S3ObjectKey
-			if key == "" {
-				key = o.resolveDumpKey(ctx, db)
-			}
-			sum := updated.Checksum
-			if key != "" && sum == "" {
-				for _, c := range o.buckets.ReadyClients(ctx, key) {
-					if raw, err := c.ReadChecksum(ctx, key); err == nil {
-						sum = firstField(raw)
-						break
-					}
+			// Ключ, sha256 и digest расширений — из terminationMessage пода, а не
+			// из бакета: в бакет пишут все, подписываем только то, что сообщил сам
+			// Job. Без отчёта (старый образ, под вычищен) checksum не выставляем:
+			// signDump пропустит, RetrySignatures прогон не возьмёт, target без
+			// подписи дамп не применит — остаётся только перезапустить дамп.
+			key, sum := updated.S3ObjectKey, ""
+			var extDigest *string
+			if report, err := o.k8s.DumpReport(ctx, run.K8sJobName); err == nil {
+				key, sum, extDigest = report.Key, report.SHA256, &report.ExtensionsDigest
+			} else {
+				log.Printf("operator: run %s: unverified checksum source (%v), signature skipped", run.ID, err)
+				if key == "" { // scheduled-прогон ключа не знал — хотя бы показать его в UI
+					key = o.resolveDumpKey(ctx, db)
 				}
+				o.notifyFailure(ctx, o.runEvent(ctx, db, model.KindDump, run.ID,
+					"дамп не подписан: Job не сообщил контрольную сумму ("+err.Error()+"), перезапустите дамп"))
 			}
-			if key != updated.S3ObjectKey || sum != updated.Checksum {
-				if u, err := o.store.UpdateRun(ctx, run.ID, store.RunUpdate{
-					Status: model.StatusSucceeded, S3ObjectKey: &key, Checksum: &sum,
-				}); err == nil {
-					updated = u
-				}
+			if u, err := o.store.UpdateRun(ctx, run.ID, store.RunUpdate{
+				Status: model.StatusSucceeded, S3ObjectKey: &key, Checksum: &sum, ExtensionsDigest: extDigest,
+			}); err == nil {
+				updated = u
 			}
-			o.signDump(ctx, db, updated)
-			o.notifyPeerBackupReady(ctx, db, updated)
+			if updated.Checksum != "" {
+				o.signDump(ctx, db, updated)
+				o.notifyPeerBackupReady(ctx, db, updated)
+			}
 		}
 	case model.KindRestore:
 		if o.cfg.IsTarget() {
@@ -788,8 +790,10 @@ func (o *Operator) onRunFailed(ctx context.Context, run model.BackupRun, js *k8s
 }
 
 // signDump кладёт рядом с дампом подпись манифеста (ключ, sha256 и digest
-// <key>.extensions) приватным ключом Source. Подписывает голова, а не dump-Job:
-// приватник в поды не попадает. Подпись асимметричная и самодостаточная — один
+// <key>.extensions) приватным ключом Source. Подписывается то, что dump-Job
+// сообщил через terminationMessage (k8s.DumpReport), а не то, что лежит в
+// бакете: иначе подмена объектов до подписи получила бы доверенную подпись.
+// Подписывает голова, а не dump-Job: приватник в поды не попадает. Подпись асимметричная и самодостаточная — один
 // .sig проверяют все Target'ы; кладётся в каждый бакет, где дамп залит. Бакеты
 // без дампа (заливка туда упала) — нотификация: копия дампа там не появится.
 // Не удалось подписать — тоже нотификация: без .sig Target дамп не восстановит;
