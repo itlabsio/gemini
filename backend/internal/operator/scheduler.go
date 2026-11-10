@@ -77,18 +77,20 @@ func (o *Operator) reconcileTemplates(ctx context.Context) {
 	if o.cfg.IsSource() {
 		dbs, err := o.store.ListEnabledDatabases(ctx)
 		if err != nil {
-			log.Printf("operator: list enabled databases: %v", err)
-		} else {
-			for i := range dbs {
-				// wanted — до ensure: если обновление не прошло (невалидный
-				// schedule, сбой API), существующий CronJob остаётся со старым
-				// spec и продолжает работать, а не удаляется ниже.
-				name := k8s.CronJobName("dump", dbs[i].ID)
-				wanted[name] = true
-				wantedInstances[dbs[i].InstanceID] = true // секрет кред нужен сохранённому CronJob'у
-				if err := o.ensureCronJob(ctx, "dump", &dbs[i], knownHash[name]); err != nil {
-					log.Printf("operator: ensure dump cronjob for %s: %v", dbs[i].DBName, err)
-				}
+			// Не знаем, что хотим, — ничего не удаляем: пустое wanted снесло бы
+			// все CronJob'ы, секреты и (через ownerReference) идущие Job'ы.
+			log.Printf("operator: list enabled databases: %v (skipping reconcile)", err)
+			return
+		}
+		for i := range dbs {
+			// wanted — до ensure: если обновление не прошло (невалидный
+			// schedule, сбой API), существующий CronJob остаётся со старым
+			// spec и продолжает работать, а не удаляется ниже.
+			name := k8s.CronJobName("dump", dbs[i].ID)
+			wanted[name] = true
+			wantedInstances[dbs[i].InstanceID] = true // секрет кред нужен сохранённому CronJob'у
+			if err := o.ensureCronJob(ctx, "dump", &dbs[i], knownHash[name]); err != nil {
+				log.Printf("operator: ensure dump cronjob for %s: %v", dbs[i].DBName, err)
 			}
 		}
 	}
@@ -97,33 +99,35 @@ func (o *Operator) reconcileTemplates(ctx context.Context) {
 		// Шаблон и креды — для всех присутствующих целевых баз (см. TemplateMappings).
 		maps, err := o.store.TemplateMappings(ctx)
 		if err != nil {
-			log.Printf("operator: list mappings: %v", err)
-		} else {
-			for _, m := range maps {
-				tgt, err := o.store.GetDatabase(ctx, m.TargetDatabaseID)
-				if err != nil {
-					continue
-				}
-				name := k8s.CronJobName("restore", tgt.ID)
-				wanted[name] = true // до ensure — см. dump выше
-				wantedInstances[tgt.InstanceID] = true
-				if err := o.ensureCronJob(ctx, "restore", tgt, knownHash[name]); err != nil {
-					log.Printf("operator: ensure restore cronjob for %s: %v", tgt.DBName, err)
-					continue
-				}
+			log.Printf("operator: list mappings: %v (skipping reconcile)", err) // см. dump выше
+			return
+		}
+		for _, m := range maps {
+			name := k8s.CronJobName("restore", m.TargetDatabaseID)
+			wanted[name] = true // до GetDatabase/ensure — см. dump выше
+			wantedDBCreds[m.TargetDatabaseID] = true
+			tgt, err := o.store.GetDatabase(ctx, m.TargetDatabaseID)
+			if err != nil {
+				log.Printf("operator: get database %s: %v", m.TargetDatabaseID, err)
+				continue
+			}
+			wantedInstances[tgt.InstanceID] = true
+			if err := o.ensureCronJob(ctx, "restore", tgt, knownHash[name]); err != nil {
+				log.Printf("operator: ensure restore cronjob for %s: %v", tgt.DBName, err)
+				continue
+			}
 
-				inst, err := o.store.GetInstance(ctx, tgt.InstanceID)
-				if err != nil || restoreModeOf(inst) != model.RestoreInPlacePerDB {
-					continue
+			inst, err := o.store.GetInstance(ctx, tgt.InstanceID)
+			if err != nil || restoreModeOf(inst) != model.RestoreInPlacePerDB {
+				delete(wantedDBCreds, tgt.ID)
+				continue
+			}
+			// Нет кредов — секрета нет; StartRestore откажет с понятной ошибкой.
+			if err := o.upsertDatabaseCreds(ctx, tgt); err != nil {
+				if !errors.Is(err, ErrNoRestoreCredentials) {
+					log.Printf("operator: upsert restore creds for %s: %v", tgt.DBName, err)
 				}
-				// Нет кредов — секрета нет; StartRestore откажет с понятной ошибкой.
-				if err := o.upsertDatabaseCreds(ctx, tgt); err != nil {
-					if !errors.Is(err, ErrNoRestoreCredentials) {
-						log.Printf("operator: upsert restore creds for %s: %v", tgt.DBName, err)
-					}
-					continue
-				}
-				wantedDBCreds[tgt.ID] = true
+				continue
 			}
 		}
 	}
