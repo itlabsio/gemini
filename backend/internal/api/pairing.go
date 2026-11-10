@@ -136,6 +136,10 @@ func (s *Server) initPairing(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "source_url and code are required")
 		return
 	}
+	if !httpsURL(sourceURL) {
+		writeError(w, http.StatusBadRequest, "source_url must use https")
+		return
+	}
 	if s.d.Cfg.PublicURL == "" {
 		writeError(w, http.StatusPreconditionFailed, "PUBLIC_URL is not set on this DR head; Source needs it for the reverse webhook")
 		return
@@ -183,6 +187,10 @@ func (s *Server) pairingExchange(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "code, peer_url, secret and public_key are required")
 		return
 	}
+	if !httpsURL(req.PeerURL) {
+		writeError(w, http.StatusBadRequest, "peer_url must use https")
+		return
+	}
 	ownPub, err := s.d.Store.EnsureHeadIdentity(r.Context())
 	if err != nil {
 		writeStoreError(w, err)
@@ -220,7 +228,11 @@ func exchangeWithSource(ctx context.Context, sourceURL string, body pairingExcha
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 15 * time.Second}
+	// Без редиректов: 307/308 переслал бы тело с HMAC-секретом на чужой адрес.
+	client := &http.Client{
+		Timeout:       15 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -235,4 +247,10 @@ func exchangeWithSource(ctx context.Context, sourceURL string, body pairingExcha
 		return nil, err
 	}
 	return &out, nil
+}
+
+// httpsURL — URL пира только по TLS: по нему уходит общий HMAC-секрет, а потом
+// webhook'и с подписью.
+func httpsURL(u string) bool {
+	return strings.HasPrefix(strings.ToLower(u), "https://")
 }
