@@ -333,3 +333,22 @@ func TestIsAutoTrigger(t *testing.T) {
 		}
 	}
 }
+
+// Занятые слоты доставки — webhook отбрасывается сразу, а не ждёт в горутине.
+func TestDeliverToPeerDropsWhenSlotsBusy(t *testing.T) {
+	o := &Operator{peerSlots: make(chan struct{}, 1)}
+	o.peerSlots <- struct{}{} // единственный слот занят
+	done := make(chan struct{})
+	go func() {
+		o.deliverToPeer(context.Background(), "https://peer.invalid", "/webhook/x", "s", nil)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("deliverToPeer blocked on busy slots")
+	}
+	if len(o.peerSlots) != 1 {
+		t.Errorf("slot count = %d, want 1 (dropped delivery must not take a slot)", len(o.peerSlots))
+	}
+}

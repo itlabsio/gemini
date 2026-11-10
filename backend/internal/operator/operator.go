@@ -1061,10 +1061,22 @@ const (
 // deliverToPeer шлёт webhook в фоне: ретраи к недоступному пиру не должны
 // задерживать цикл Watch и запрос отмены прогона. Контекст отвязан от
 // вызывающего — запрос пользователя закончится раньше доставки.
+//
+// Слоты заняты (мёртвый пир держит каждый до peerDeliveryTimeout) — webhook
+// отбрасывается, а не ставится в очередь: иначе горутины с телами копились бы
+// без предела. Потеря безопасна: backup-ready target подхватит fallback-поллингом
+// S3, restore-status только отображение на source.
+// ponytail: слоты общие на всех пиров — мёртвый пир душит живых; слоты на пира,
+// если target'ов станет много и поллинг на них выключат.
 func (o *Operator) deliverToPeer(ctx context.Context, peerURL, path, secret string, body []byte) {
+	select {
+	case o.peerSlots <- struct{}{}:
+	default:
+		log.Printf("operator: webhook %s to %s dropped: all %d delivery slots busy", path, peerURL, peerDeliveryConcurrency)
+		return
+	}
 	ctx = context.WithoutCancel(ctx)
 	go func() {
-		o.peerSlots <- struct{}{}
 		defer func() { <-o.peerSlots }()
 		ctx, cancel := context.WithTimeout(ctx, peerDeliveryTimeout)
 		defer cancel()
