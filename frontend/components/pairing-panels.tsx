@@ -146,7 +146,7 @@ export function InitPairingPanel() {
           Введите URL Source-контура и одноразовый код, выданный его администратором
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="mt-auto">
         <form action={onSubmit} className="flex flex-col gap-4">
           <Field label="URL Source-контура" htmlFor="source_url">
             <Input
@@ -204,7 +204,7 @@ export function OfflinePairingPanel() {
           каким дампам Target поверит.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="mt-auto">
         <form action={onSubmit} className="flex flex-col gap-4">
           <Field label="Публичный ключ Source (base64)" htmlFor="public_key">
             <Input id="public_key" name="public_key" required className="font-mono" />

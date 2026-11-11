@@ -7,7 +7,7 @@ import {
   InitPairingPanel,
   OfflinePairingPanel,
 } from "@/components/pairing-panels";
-import { PairingsTable } from "@/components/pairings-table";
+import { PairingsTable, PeerKey } from "@/components/pairings-table";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { PageHeader } from "@/components/ui/page-header";
 import { Alert } from "@/components/ui/alert";
@@ -42,7 +42,7 @@ export default async function PairingPage() {
           <p className="font-medium">
             Публичный ключ этого инстанса Gemini ({me.head_role})
           </p>
-          <p className="font-mono text-xs break-all">{me.head_public_key}</p>
+          <PeerKey value={me.head_public_key} />
           <p className="text-muted-foreground">
             {me.head_role === "source"
               ? "Этим ключом Target'ы проверяют подпись дампов. "
@@ -65,7 +65,7 @@ export default async function PairingPage() {
             .at(-1)}
         />
       ) : (
-        <div className="flex flex-wrap items-start gap-6">
+        <div className="flex flex-wrap gap-6">
           <InitPairingPanel />
           <OfflinePairingPanel />
         </div>

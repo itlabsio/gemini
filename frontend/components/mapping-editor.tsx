@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { CloudDownload } from "lucide-react";
+import { CloudDownload, Loader2 } from "lucide-react";
 import type { Candidate, DatabaseMapping } from "@/lib/types";
 import {
   loadCandidatesAction,
@@ -117,7 +117,7 @@ export function MappingEditor({
         }
         disabled={pending || !project}
       >
-        <CloudDownload className={pending ? "animate-pulse" : undefined} />
+        {pending ? <Loader2 className="animate-spin" /> : <CloudDownload />}
         {offline ? "Загрузить список баз из бакета" : "Загрузить список баз с Source"}
       </Button>
 

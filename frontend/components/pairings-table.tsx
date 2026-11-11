@@ -194,8 +194,8 @@ export function PairingsTable({
   );
 }
 
-/** Ключ пира целиком (сверяется символ в символ) и кнопка копирования. */
-function PeerKey({ value }: { value: string }) {
+/** Публичный ключ целиком (сверяется символ в символ) и кнопка копирования. */
+export function PeerKey({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
 
   function copy() {
@@ -211,11 +211,11 @@ function PeerKey({ value }: { value: string }) {
       <Button
         variant="ghost"
         size="icon"
-        className="flex-none"
+        className="size-6 flex-none"
         onClick={copy}
-        aria-label="Копировать ключ пира"
+        aria-label="Копировать ключ"
       >
-        {copied ? <Check /> : <Copy />}
+        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
       </Button>
     </div>
   );
