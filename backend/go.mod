@@ -1,6 +1,6 @@
 module github.com/itlabsio/gemini/backend
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/gorilla/mux v1.8.1
