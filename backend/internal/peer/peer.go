@@ -94,6 +94,27 @@ func VerifyArtifactV1(pub ed25519.PublicKey, s3Key, sha256hex, sig string) bool 
 	return verify(pub, artifactMessageV1(s3Key, sha256hex), sig)
 }
 
+// instanceMetaDomain — подписи <инстанс>/meta.json (проект инстанса для
+// оффлайн-сопоставления на Target). Отдельный домен: подпись meta.json нельзя
+// выдать за подпись дампа и наоборот.
+const instanceMetaDomain = "gemini-instance-meta-v1"
+
+func instanceMetaMessage(s3Key string, body []byte) []byte {
+	sum := sha256.Sum256(body)
+	return []byte(instanceMetaDomain + "\n" + s3Key + "\n" + hex.EncodeToString(sum[:]))
+}
+
+// SignInstanceMeta подписывает содержимое meta.json вместе с его ключом в S3:
+// файл нельзя переложить в папку другого инстанса.
+func SignInstanceMeta(priv ed25519.PrivateKey, s3Key string, body []byte) string {
+	return base64.StdEncoding.EncodeToString(ed25519.Sign(priv, instanceMetaMessage(s3Key, body)))
+}
+
+// VerifyInstanceMeta сверяет подпись meta.json публичным ключом Source.
+func VerifyInstanceMeta(pub ed25519.PublicKey, s3Key string, body []byte, sig string) bool {
+	return verify(pub, instanceMetaMessage(s3Key, body), sig)
+}
+
 func verify(pub ed25519.PublicKey, msg []byte, sig string) bool {
 	raw, err := base64.StdEncoding.DecodeString(sig)
 	if err != nil || len(pub) != ed25519.PublicKeySize {

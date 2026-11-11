@@ -20,6 +20,7 @@
 | Подпись и проверка дампов (ed25519) | `operator.go`: `signDump`, `RetrySignatures`, `VerifiedDump`; примитивы — `peer/peer.go` (`SignArtifact`, `VerifyArtifact`, v1/v2) |
 | Webhook между инстансами Gemini | входящие: `api/webhook.go` (`backup-ready`, `restore-status`); исходящие: `operator.go` `notifyPeerBackupReady` / `notifyPeerRestoreStatus`; HMAC и retry — `peer/peer.go` |
 | Pairing | `api/pairing.go` (код → exchange), `store/pairing.go`, `store/identity.go`, UI `frontend/app/pairing` |
+| Оффлайн-пара (только ключ source, без связи) | `api/pairing.go:initOfflinePairing` (пара без URL/секрета); кандидаты из бакета — `api/mapping.go:offlineCandidates`, `operator/instancemeta.go` (`OfflineCandidates`, на source — `SyncInstanceMeta`/`RunInstanceMetaSync`, `<инстанс>/meta.json`); подпись — `peer.SignInstanceMeta`; листинг — `storage/meta.go` |
 | Что делает pod pg_dump / pg_restore | `jobrunner/dump.go` (`runDump`, `uploadDump`), `jobrunner/restore.go` (`restoreRecreate` / `restoreInPlace`, расширения, owner), выбор мажорной версии клиента — `jobrunner/pgclient.go` |
 | Pod/Job: ресурсы, storage, overrides, таймауты | `k8s/podspec.go`, `k8s/podoverrides.go`, `k8s/jobs.go`; параметры из настроек — `operator.go:jobParams` |
 | Секреты кред в k8s | `k8s/secrets.go`, `operator.go` (`resolveCreds`, `upsertInstanceCreds`, `upsertDatabaseCreds`), Vault — `vault/vault.go` |

@@ -77,7 +77,17 @@ export function PairingsTable({
                   </Badge>
                 </TableCell>
                 <TableCell className="font-mono text-xs">
-                  {p.peer_url || "—"}
+                  {p.peer_url ||
+                    (p.peer_role === "source" && p.peer_public_key ? (
+                      <Badge
+                        variant="outline"
+                        title="Оффлайн-пара: известен только ключ Source, связи с ним нет"
+                      >
+                        оффлайн
+                      </Badge>
+                    ) : (
+                      "—"
+                    ))}
                 </TableCell>
                 <TableCell>
                   {p.peer_public_key ? (

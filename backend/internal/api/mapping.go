@@ -11,6 +11,8 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/itlabsio/gemini/backend/internal/auth"
+	"github.com/itlabsio/gemini/backend/internal/operator"
+	"github.com/itlabsio/gemini/backend/internal/storage"
 	"github.com/itlabsio/gemini/backend/internal/store"
 )
 
@@ -30,6 +32,9 @@ type candidate struct {
 	// Project — проект инстанса Source, которому принадлежит база. Target
 	// сверяет его с проектом своего инстанса (RBAC) и не доверяет ответу без поля.
 	Project string `json:"project"`
+	// ProjectUnverified — оффлайн-пара, а у инстанса нет проверенного
+	// meta.json: проект неизвестен, кандидат виден только superuser'у.
+	ProjectUnverified bool `json:"project_unverified,omitempty"`
 }
 
 // peerListDatabases (Source, HMAC): отдаёт Target список присутствующих баз
@@ -82,6 +87,10 @@ func (s *Server) fetchCandidates(w http.ResponseWriter, r *http.Request, project
 		writeError(w, http.StatusPreconditionFailed, "no active pairing with Source; run pairing first")
 		return "", nil, false
 	}
+	if p.PeerURL == "" {
+		cands, ok := s.offlineCandidates(w, r, project)
+		return p.ID, cands, ok
+	}
 	secret, err := s.d.Store.PairingSecret(r.Context(), "source")
 	if err != nil || secret == "" {
 		writeError(w, http.StatusPreconditionFailed, "pairing secret unavailable")
@@ -104,6 +113,45 @@ func (s *Server) fetchCandidates(w http.ResponseWriter, r *http.Request, project
 		}
 	}
 	return p.ID, cands, true
+}
+
+// offlineCandidates — кандидаты при оффлайн-паре: из бакетов, проект — из
+// подписанного meta.json инстанса. Без проверенного проекта базу видит только
+// superuser (ему и сейчас разрешён произвольный префикс).
+func (s *Server) offlineCandidates(w http.ResponseWriter, r *http.Request, project string) ([]candidate, bool) {
+	ctx, cancel := context.WithTimeout(r.Context(), s3Timeout)
+	defer cancel()
+	found, err := s.d.Operator.OfflineCandidates(ctx)
+	if errors.Is(err, storage.ErrNoBuckets) {
+		writeError(w, http.StatusServiceUnavailable, "S3 storage is not configured")
+		return nil, false
+	}
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "failed to read dumps from S3: "+err.Error())
+		return nil, false
+	}
+	return offlineToCandidates(found, project, identity(r).Superuser), true
+}
+
+func offlineToCandidates(found []operator.OfflineCandidate, project string, superuser bool) []candidate {
+	out := []candidate{}
+	for _, f := range found {
+		known := f.ProjectKnown && f.Project != ""
+		if known && f.Project != project || !known && !superuser {
+			continue
+		}
+		out = append(out, candidate{
+			// Префикс однозначно задаёт базу Source и не меняется без её
+			// переименования — им и идентифицируем базу без связи с Source.
+			ExternalID:        "offline:" + f.Prefix,
+			DBName:            f.DBName,
+			S3Prefix:          f.Prefix,
+			Enabled:           true, // на Source не узнать; в UI «выключена» не показываем
+			Project:           project,
+			ProjectUnverified: !known,
+		})
+	}
+	return out
 }
 
 // mappingCandidates (Target): базы Source того же проекта (?project=). Нужна

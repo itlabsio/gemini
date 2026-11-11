@@ -197,6 +197,7 @@ func runServe() {
 		}
 		if cfg.IsSource() {
 			spawn(op.RunSignatureRetry)
+			spawn(op.RunInstanceMetaSync) // <инстанс>/meta.json для оффлайн-пары Target'а
 		}
 		wg.Wait()
 	}

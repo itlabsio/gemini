@@ -4,7 +4,11 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Check, Copy, KeyRound, Link2 } from "lucide-react";
-import { issuePairingCodeAction, initPairingAction } from "@/app/pairing/actions";
+import {
+  issuePairingCodeAction,
+  initOfflinePairingAction,
+  initPairingAction,
+} from "@/app/pairing/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
@@ -159,6 +163,55 @@ export function InitPairingPanel() {
             {pending ? "Обмен…" : "Установить доверие"}
           </Button>
           {ok && <p className="text-sm text-success">Пара установлена</p>}
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Оффлайн-пара: Source недоступен (или его нет), но его публичный ключ сохранён
+ * заранее. Дампы и сопоставления берутся из бакета, подписи проверяются этим ключом.
+ */
+export function OfflinePairingPanel() {
+  const [pending, start] = useTransition();
+  const router = useRouter();
+
+  function onSubmit(fd: FormData) {
+    start(async () => {
+      const res = await initOfflinePairingAction(String(fd.get("public_key") ?? ""));
+      if (res.ok) {
+        toast.success("Ключ Source запомнен");
+        router.refresh();
+      } else {
+        toast.error(res.error);
+      }
+    });
+  }
+
+  return (
+    <Card className="max-w-lg">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <KeyRound className="size-4" />
+          Оффлайн-пара по ключу Source
+        </CardTitle>
+        <CardDescription>
+          Если Source недоступен: вставьте его публичный ключ, сохранённый заранее
+          (Source показывает его на этой странице). Дампы и базы для сопоставления
+          будут найдены в бакете, каждый restore проверяется подписью этим ключом.
+          Сверьте ключ с сохранённой копией символ в символ — от него зависит,
+          каким дампам Target поверит.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form action={onSubmit} className="flex flex-col gap-4">
+          <Field label="Публичный ключ Source (base64)" htmlFor="public_key">
+            <Input id="public_key" name="public_key" required className="font-mono" />
+          </Field>
+          <Button type="submit" variant="outline" className="self-start" disabled={pending}>
+            {pending ? "Сохранение…" : "Запомнить ключ"}
+          </Button>
         </form>
       </CardContent>
     </Card>

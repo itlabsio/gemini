@@ -19,7 +19,7 @@ import (
 )
 
 // dumpSuffix — расширение объекта дампа (см. jobrunner.runDump, operator.StartDump).
-const dumpSuffix = ".dump"
+const dumpSuffix = storage.DumpSuffix
 
 // s3Timeout — потолок на обращения к S3 из обработчиков дампов.
 const s3Timeout = 15 * time.Second

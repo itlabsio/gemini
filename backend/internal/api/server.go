@@ -141,6 +141,7 @@ func NewRouter(d Deps) http.Handler {
 	}
 	if d.Cfg.IsTarget() {
 		apiR.HandleFunc("/pairing/init", auth.RequireSuperuser(s.initPairing)).Methods(http.MethodPost)
+		apiR.HandleFunc("/pairing/offline", auth.RequireSuperuser(s.initOfflinePairing)).Methods(http.MethodPost)
 		apiR.HandleFunc("/instances/{id}/roles", auth.RequireAnyProject(auth.RoleAdmin, s.listInstanceRoles)).Methods(http.MethodGet)
 		apiR.HandleFunc("/instances/{id}/restorable", auth.RequireSuperuser(s.setInstanceRestorable)).Methods(http.MethodPut)
 		apiR.HandleFunc("/databases/{id}/restore-candidates", auth.RequireAnyProject(auth.RoleOperator, s.listRestoreCandidates)).Methods(http.MethodGet)

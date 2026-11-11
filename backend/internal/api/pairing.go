@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -173,6 +174,48 @@ func (s *Server) initPairing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "pairing.init", sourceURL, nil)
+	writeJSON(w, http.StatusOK, p)
+}
+
+type offlinePairingRequest struct {
+	PublicKey string `json:"public_key"` // base64 Ed25519 публичный ключ Source
+}
+
+// initOfflinePairing (Target, superuser) — оффлайн-пара: запоминается только
+// публичный ключ Source, сохранённый заранее вне Gemini (Source показывает его
+// на странице pairing). Ни URL, ни HMAC-секрета: webhook'и от Source не
+// принимаются (верификатор пропускает пары без секрета), restore-status не
+// шлётся, а дампы и сопоставления берутся из бакета (см. fetchCandidates). Всё,
+// что восстанавливается, по-прежнему проверяется подписью этим ключом.
+//
+// Существующую активную пару не заменяет: её надо явно разорвать, чтобы
+// случайный ввод ключа не перебил рабочую связь. Обычный pairing позже
+// заменит оффлайн-пару сам.
+func (s *Server) initOfflinePairing(w http.ResponseWriter, r *http.Request) {
+	var req offlinePairingRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(req.PublicKey))
+	if err != nil || len(raw) != ed25519.PublicKeySize {
+		writeError(w, http.StatusBadRequest, "public_key must be a base64 Ed25519 public key (32 bytes)")
+		return
+	}
+	if _, err := s.d.Store.ActivePairing(r.Context(), "source"); err == nil {
+		writeError(w, http.StatusConflict, "an active pairing with Source already exists — revoke it first")
+		return
+	} else if !errors.Is(err, store.ErrNotFound) {
+		writeStoreError(w, err)
+		return
+	}
+	key := base64.StdEncoding.EncodeToString(raw)
+	p, err := s.d.Store.UpsertActivePairingWithSource(r.Context(), "", "", key)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	sum := sha256.Sum256(raw)
+	s.audit(r, "pairing.offline", p.ID, map[string]any{"public_key": key, "sha256": hex.EncodeToString(sum[:])})
 	writeJSON(w, http.StatusOK, p)
 }
 

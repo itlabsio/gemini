@@ -306,6 +306,12 @@ export const initPairing = (source_url: string, code: string) =>
     body: JSON.stringify({ source_url, code }),
   });
 
+export const initOfflinePairing = (public_key: string) =>
+  apiFetch<HeadPairing>("/api/pairing/offline", {
+    method: "POST",
+    body: JSON.stringify({ public_key }),
+  });
+
 export interface MappingPayload {
   head_pairing_id: string;
   source_database_external_id: string;

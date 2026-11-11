@@ -39,14 +39,18 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 
 	// Для UI сопоставления: список пар (pairings) — только superuser, а узнать,
 	// есть ли активная пара с Source, нужно и админу проекта.
-	sourcePaired := false
+	// sourceOffline — пара оффлайн (только ключ Source, см. initOfflinePairing):
+	// UI берёт базы для сопоставления из бакета и подписывает это.
+	sourcePaired, sourceOffline := false, false
 	if s.d.Cfg.IsTarget() {
-		_, err := s.d.Store.ActivePairing(r.Context(), "source")
+		p, err := s.d.Store.ActivePairing(r.Context(), "source")
 		sourcePaired = err == nil
+		sourceOffline = sourcePaired && p.PeerURL == ""
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"source_paired":   sourcePaired,
+		"source_offline":  sourceOffline,
 		"subject":         id.Subject,
 		"email":           id.Email,
 		"superuser":       id.Superuser,

@@ -64,6 +64,7 @@ export default async function MappingPage() {
     ? instanceProjects
     : projectsAtLeast(me, "admin").filter((p) => instanceProjects.includes(p));
   const hasSourcePairing = me.source_paired;
+  const offline = hasSourcePairing && !!me.source_offline;
   const targetLabel = new Map(targets.map((t) => [t.id, t.label]));
   const targetProject = new Map(targets.map((t) => [t.id, t.project]));
   const targetRestore = new Map(targets.map((t) => [t.id, t.restore]));
@@ -72,7 +73,7 @@ export default async function MappingPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Сопоставление баз"
-        description="Для каждой source-базы выберите целевую базу в Target-контуре. Префикс дампа в S3 подставляется из Source"
+        description={`Для каждой source-базы выберите целевую базу в Target-контуре. Префикс дампа в S3 подставляется ${offline ? "из бакета" : "из Source"}`}
       />
 
       <Alert variant="info">
@@ -89,10 +90,22 @@ export default async function MappingPage() {
               <Badge variant="secondary">не сделано</Badge>
             )}
           </li>
-          <li>«Загрузить список баз с Source» — кнопка ниже</li>
+          <li>
+            {offline ? "«Загрузить список баз из бакета»" : "«Загрузить список баз с Source»"} — кнопка ниже
+          </li>
           <li>Для каждой базы выбрать целевую и сохранить</li>
         </ol>
       </Alert>
+
+      {offline && (
+        <Alert variant="warning">
+          <p className="font-medium">Оффлайн-пара: связи с Source нет</p>
+          <p>
+            Базы найдены в бакете по подписанным дампам, проект — по подписанному
+            meta.json инстанса. Каждый restore проверяется подписью ключа Source.
+          </p>
+        </Alert>
+      )}
 
       {error && <Alert variant="destructive">{error}</Alert>}
 
@@ -114,6 +127,7 @@ export default async function MappingPage() {
           projects={editableProjects}
           targets={targets}
           existing={existing}
+          offline={offline}
         />
       )}
 

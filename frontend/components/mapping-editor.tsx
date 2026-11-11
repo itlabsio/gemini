@@ -43,11 +43,14 @@ export function MappingEditor({
   projects,
   targets,
   existing,
+  offline = false,
 }: {
   /** Проекты, в которых пользователь может сопоставлять (admin проекта / superuser). */
   projects: string[];
   targets: TargetOption[];
   existing: DatabaseMapping[];
+  /** Оффлайн-пара: кандидаты из бакета, а не от Source. */
+  offline?: boolean;
 }) {
   const [pending, start] = useTransition();
   const [project, setProject] = useState(projects[0] ?? "");
@@ -115,7 +118,7 @@ export function MappingEditor({
         disabled={pending || !project}
       >
         <CloudDownload className={pending ? "animate-pulse" : undefined} />
-        Загрузить список баз с Source
+        {offline ? "Загрузить список баз из бакета" : "Загрузить список баз с Source"}
       </Button>
 
       {candidates.length > 0 && pairingId && (
@@ -140,6 +143,7 @@ export function MappingEditor({
                   roles={roles}
                   loadRoles={loadRoles}
                   existing={existingBySource.get(c.external_id)}
+                  offline={offline}
                 />
               ))}
             </TableBody>
@@ -157,6 +161,7 @@ function MappingRow({
   roles,
   loadRoles,
   existing,
+  offline,
 }: {
   candidate: Candidate;
   pairingId: string;
@@ -164,6 +169,7 @@ function MappingRow({
   roles: RolesState;
   loadRoles: (instanceId: string) => void;
   existing?: DatabaseMapping;
+  offline: boolean;
 }) {
   const [pending, start] = useTransition();
   const [target, setTarget] = useState(existing?.target_database_id ?? "");
@@ -189,6 +195,15 @@ function MappingRow({
         <div className="space-y-0.5">
           <div className="flex items-center gap-2">
             <span className="font-medium">{candidate.db_name}</span>
+            {candidate.project_unverified && (
+              <Badge
+                variant="outline"
+                className="text-warning"
+                title="Оффлайн-пара: у инстанса в бакете нет проверенного meta.json, проект базы неизвестен. Убедитесь, что база относится к этому проекту"
+              >
+                проект не проверен
+              </Badge>
+            )}
             {candidate.enabled === false && (
               <Badge
                 variant="outline"
@@ -199,6 +214,13 @@ function MappingRow({
               </Badge>
             )}
           </div>
+          {offline && (
+            // Без Source имя базы не уникально: та же база может быть на
+            // нескольких инстансах. Инстанс — первый сегмент префикса.
+            <div className="text-xs text-muted-foreground">
+              инстанс {candidate.s3_prefix.split("/")[0]}
+            </div>
+          )}
           <DbSize bytes={candidate.size_bytes} />
         </div>
       </TableCell>

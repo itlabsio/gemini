@@ -44,3 +44,26 @@ func TestArtifactSignatureCoversExtensions(t *testing.T) {
 func signV1(priv ed25519.PrivateKey, key, sum string) string {
 	return base64.StdEncoding.EncodeToString(ed25519.Sign(priv, artifactMessageV1(key, sum)))
 }
+
+func TestInstanceMetaSignature(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const key = "pg-main/meta.json"
+	body := []byte(`{"instance":"pg-main","project":"billing"}`)
+	sig := SignInstanceMeta(priv, key, body)
+	if !VerifyInstanceMeta(pub, key, body, sig) {
+		t.Fatal("valid meta signature rejected")
+	}
+	if VerifyInstanceMeta(pub, "pg-other/meta.json", body, sig) {
+		t.Error("meta moved to another instance folder accepted")
+	}
+	if VerifyInstanceMeta(pub, key, []byte(`{"instance":"pg-main","project":"other"}`), sig) {
+		t.Error("tampered meta accepted")
+	}
+	// Подписи дампа и meta.json не взаимозаменяемы.
+	if VerifyArtifactV1(pub, key, string(body), sig) || VerifyArtifact(pub, key, string(body), "none", sig) {
+		t.Error("meta signature accepted as dump signature")
+	}
+}

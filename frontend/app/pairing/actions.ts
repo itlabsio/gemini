@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import {
   ApiError,
   deletePairing,
+  initOfflinePairing,
   initPairing,
   issuePairingCode,
   revokePairing,
@@ -66,6 +67,18 @@ export async function initPairingAction(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     await initPairing(sourceURL, code);
+    revalidatePath("/pairing");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof ApiError ? `${e.status}: ${e.message}` : String(e) };
+  }
+}
+
+export async function initOfflinePairingAction(
+  publicKey: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await initOfflinePairing(publicKey);
     revalidatePath("/pairing");
     return { ok: true };
   } catch (e) {

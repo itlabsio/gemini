@@ -254,6 +254,7 @@ func (s *Server) createInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "instance.create", inst.ID, nil)
+	s.syncInstanceMeta(r, inst)
 	writeJSON(w, http.StatusCreated, inst)
 }
 
@@ -307,7 +308,23 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "instance.update", id, detail)
+	s.syncInstanceMeta(r, inst)
 	writeJSON(w, http.StatusOK, inst)
+}
+
+// syncInstanceMeta (Source) сразу обновляет <инстанс>/meta.json после
+// создания/правки, не дожидаясь часовой сверки на лидере. В фоне: ответ API не
+// ждёт S3; сбой подберёт та же сверка.
+func (s *Server) syncInstanceMeta(r *http.Request, inst *model.Instance) {
+	if s.d.Operator == nil || !s.d.Cfg.IsSource() {
+		return
+	}
+	ctx, snapshot := context.WithoutCancel(r.Context()), *inst
+	go func() {
+		ctx, cancel := context.WithTimeout(ctx, s3Timeout)
+		defer cancel()
+		s.d.Operator.SyncInstanceMeta(ctx, snapshot)
+	}()
 }
 
 // clearInstanceManagedBy (superuser) снимает метку Terraform: инстанс убрали из

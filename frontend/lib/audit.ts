@@ -34,6 +34,7 @@ export const AUDIT_ACTIONS: Record<string, { label: string; kind: AuditKind }> =
   "mapping.delete": { label: "Удаление сопоставления", kind: "delete" },
   "pairing.issue-code": { label: "Выпуск кода pairing", kind: "create" },
   "pairing.init": { label: "Pairing с Source", kind: "create" },
+  "pairing.offline": { label: "Оффлайн-пара по ключу Source", kind: "create" },
   "pairing.revoke": { label: "Разрыв связи", kind: "delete" },
   "pairing.delete": { label: "Удаление связи", kind: "delete" },
   "project.create": { label: "Создание проекта", kind: "create" },

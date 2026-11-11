@@ -202,6 +202,8 @@ export interface Candidate {
   enabled: boolean;
   /** Примерный размер базы на Source (последний discovery там). */
   size_bytes?: number;
+  /** Оффлайн-пара без проверенного meta.json инстанса: проект неизвестен (видит только superuser). */
+  project_unverified?: boolean;
 }
 
 export type ProjectRole = "viewer" | "operator" | "admin";
@@ -251,6 +253,8 @@ export interface Me {
   projects: Record<string, ProjectRole>;
   /** Target: есть ли активная пара с Source (список pairings — только superuser). */
   source_paired: boolean;
+  /** Target: пара с Source оффлайн — базы для сопоставления берутся из бакета. */
+  source_offline?: boolean;
   head_role: HeadRole;
   vault_enabled: boolean;
   /** Публичный ключ этой головы (base64 Ed25519) — для сверки при pairing. */
