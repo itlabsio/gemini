@@ -1,0 +1,125 @@
+# Локальный стенд: docker compose up --build
+#   source: http://localhost:3000 (API :8080), target: http://localhost:3001 (API :8081)
+#   пользователи: admin/admin — superuser, dev/dev — developer в проекте demo.
+#   Keycloak: http://localhost:8180 (admin/admin).
+# Cookie не различают порты, поэтому сессия next-auth у фронтов общая — это нормально:
+# AUTH_SECRET, клиент Keycloak и пользователь у них одни и те же.
+# Pairing: в UI target'а указать адрес source http://localhost:8080 (общий netns).
+#
+# keycloak, backend и frontend делят один network namespace (сервис net), поэтому
+# issuer http://localhost:8180/realms/gemini одинаков и для браузера, и для контейнеров.
+# Kubernetes нет (kubeconfig не монтируется) → оркестрация Job'ов выключена, dump/restore не запускаются.
+# S3 не настроен — бакет можно добавить в UI.
+
+x-backend-env: &backend-env
+  HEAD_ROLE: source
+  PUBLIC_URL: http://localhost:8080
+  POSTGRES_URL: postgres://gemini:gemini@postgres:5432/gemini?sslmode=disable
+  SECRET_ENCRYPTION_KEY: local-dev-only-32-byte-secretkey
+  OIDC_ISSUER_URL: http://localhost:8180/realms/gemini
+  OIDC_CLIENT_ID: gemini
+
+x-target-env: &target-env
+  <<: *backend-env
+  HEAD_ROLE: target
+  LISTEN_ADDR: ":8081"
+  PUBLIC_URL: http://localhost:8081
+  POSTGRES_URL: postgres://gemini:gemini@postgres-target:5432/gemini?sslmode=disable
+
+x-frontend-env: &frontend-env
+  BACKEND_URL: http://localhost:8080
+  KEYCLOAK_URL: http://localhost:8180/realms/gemini
+  KEYCLOAK_CLIENT_ID: gemini
+  KEYCLOAK_CLIENT_SECRET: gemini-dev-secret
+  AUTH_SECRET: local-dev-only-auth-secret-change-me
+  AUTH_URL: http://localhost:3000
+  ALLOWED_ORIGINS: localhost:3000
+
+services:
+  net:
+    image: alpine:3.22
+    command: sleep infinity
+    init: true
+    ports: ["3000:3000", "3001:3001", "8080:8080", "8081:8081", "8180:8180"]
+
+  postgres: &postgres
+    image: postgres:17-alpine
+    environment: { POSTGRES_USER: gemini, POSTGRES_PASSWORD: gemini, POSTGRES_DB: gemini }
+    ports: ["5433:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: pg_isready -U gemini
+      interval: 2s
+      retries: 30
+
+  postgres-target:
+    <<: *postgres
+    ports: ["5434:5432"]
+    volumes: [pgdata-target:/var/lib/postgresql/data]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: start-dev --import-realm --http-port=8180
+    network_mode: service:net
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_MANAGEMENT_PORT: "9100"
+    volumes: [./dev/keycloak-realm.json:/opt/keycloak/data/import/gemini.json:ro]
+
+  migrate:
+    image: gemini-backend:local
+    pull_policy: never
+    command: migrate
+    environment: *backend-env
+    depends_on: { postgres: { condition: service_healthy } }
+
+  backend:
+    build: ./backend
+    image: gemini-backend:local
+    network_mode: service:net
+    restart: on-failure # стартует раньше Keycloak и падает на первичной загрузке JWKS
+    environment: *backend-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      keycloak: { condition: service_started }
+
+  frontend:
+    build: ./frontend
+    image: gemini-frontend:local
+    network_mode: service:net
+    environment: *frontend-env
+    depends_on: [backend]
+
+  migrate-target:
+    image: gemini-backend:local
+    pull_policy: never
+    command: migrate
+    environment: *target-env
+    depends_on: { postgres-target: { condition: service_healthy } }
+
+  backend-target:
+    image: gemini-backend:local
+    pull_policy: never
+    network_mode: service:net
+    restart: on-failure
+    environment: *target-env
+    depends_on:
+      migrate-target: { condition: service_completed_successfully }
+      keycloak: { condition: service_started }
+
+  frontend-target:
+    image: gemini-frontend:local
+    pull_policy: never
+    network_mode: service:net
+    environment:
+      <<: *frontend-env
+      PORT: "3001"
+      BACKEND_URL: http://localhost:8081
+      AUTH_URL: http://localhost:3001
+      ALLOWED_ORIGINS: localhost:3001
+    depends_on: [backend-target]
+
+volumes:
+  pgdata:
+  pgdata-target:

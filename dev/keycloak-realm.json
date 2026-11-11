@@ -1,0 +1,60 @@
+{
+  "realm": "gemini",
+  "enabled": true,
+  "sslRequired": "none",
+  "clients": [
+    {
+      "clientId": "gemini",
+      "secret": "gemini-dev-secret",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:3000/*", "http://localhost:3001/*"],
+      "webOrigins": ["http://localhost:3000", "http://localhost:3001"],
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "claim.name": "groups",
+            "full.path": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "roles": {
+    "client": {
+      "gemini": [{ "name": "superuser" }, { "name": "security" }]
+    }
+  },
+  "groups": [
+    { "name": "demo", "subGroups": [{ "name": "admin" }, { "name": "developer" }, { "name": "readonly" }] }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@example.com",
+      "firstName": "Admin",
+      "lastName": "Local",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "admin", "temporary": false }],
+      "clientRoles": { "gemini": ["superuser", "security"] }
+    },
+    {
+      "username": "dev",
+      "email": "dev@example.com",
+      "firstName": "Dev",
+      "lastName": "Local",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "dev", "temporary": false }],
+      "groups": ["/demo/developer"]
+    }
+  ]
+}
