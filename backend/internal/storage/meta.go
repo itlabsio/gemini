@@ -37,12 +37,28 @@ func (c *Client) PutObject(ctx context.Context, key, contentType string, body []
 	return err
 }
 
-// SignedDumpPrefixes — префиксы баз (<инстанс>/<база>), под которыми лежит хотя
-// бы один готовый дамп с .sig. Только по наличию файлов: подпись проверяет
-// restore (operator.VerifiedDump). Один рекурсивный листинг всего бакета.
-func (c *Client) SignedDumpPrefixes(ctx context.Context) (map[string]bool, error) {
+// Instances — имена инстансов: «каталоги» верхнего уровня бакета
+// (<инстанс>/...). Один нерекурсивный листинг корня.
+func (c *Client) Instances(ctx context.Context) ([]string, error) {
+	var out []string
+	for info := range c.mc.ListObjects(ctx, c.bucket, minio.ListObjectsOptions{}) {
+		if info.Err != nil {
+			return nil, info.Err
+		}
+		if name, ok := strings.CutSuffix(info.Key, "/"); ok && name != "" {
+			out = append(out, name)
+		}
+	}
+	return out, nil
+}
+
+// SignedDumpPrefixes — префиксы баз (<инстанс>/<база>) инстанса, под которыми
+// лежит хотя бы один готовый дамп с .sig. Только по наличию файлов: подпись
+// проверяет restore (operator.VerifiedDump). Рекурсивный листинг <инстанс>/.
+func (c *Client) SignedDumpPrefixes(ctx context.Context, instance string) (map[string]bool, error) {
 	var keys []string
-	for info := range c.mc.ListObjects(ctx, c.bucket, minio.ListObjectsOptions{Recursive: true}) {
+	opts := minio.ListObjectsOptions{Prefix: instance + "/", Recursive: true}
+	for info := range c.mc.ListObjects(ctx, c.bucket, opts) {
 		if info.Err != nil {
 			return nil, info.Err
 		}

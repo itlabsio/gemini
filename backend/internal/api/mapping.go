@@ -121,7 +121,8 @@ func (s *Server) fetchCandidates(w http.ResponseWriter, r *http.Request, project
 func (s *Server) offlineCandidates(w http.ResponseWriter, r *http.Request, project string) ([]candidate, bool) {
 	ctx, cancel := context.WithTimeout(r.Context(), s3Timeout)
 	defer cancel()
-	found, err := s.d.Operator.OfflineCandidates(ctx)
+	superuser := identity(r).Superuser
+	found, err := s.d.Operator.OfflineCandidates(ctx, project, superuser)
 	if errors.Is(err, storage.ErrNoBuckets) {
 		writeError(w, http.StatusServiceUnavailable, "S3 storage is not configured")
 		return nil, false
@@ -130,7 +131,7 @@ func (s *Server) offlineCandidates(w http.ResponseWriter, r *http.Request, proje
 		writeError(w, http.StatusBadGateway, "failed to read dumps from S3: "+err.Error())
 		return nil, false
 	}
-	return offlineToCandidates(found, project, identity(r).Superuser), true
+	return offlineToCandidates(found, project, superuser), true
 }
 
 func offlineToCandidates(found []operator.OfflineCandidate, project string, superuser bool) []candidate {

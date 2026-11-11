@@ -10,6 +10,7 @@ import (
 	"math/rand/v2"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/itlabsio/gemini/backend/internal/model"
@@ -121,6 +122,9 @@ func readInstanceMeta(ctx context.Context, c *storage.Client, pub ed25519.Public
 	return &m
 }
 
+// s3Concurrency — сколько запросов к бакетам OfflineCandidates шлёт одновременно.
+const s3Concurrency = 16
+
 // OfflineCandidate — база, найденная в бакетах без связи с Source.
 type OfflineCandidate struct {
 	Prefix   string // <инстанс>/<база>
@@ -137,7 +141,11 @@ type OfflineCandidate struct {
 // проверенного запиненным ключом Source. Сами дампы здесь не проверяются — это
 // делает VerifiedDump при restore, а подпись покрывает и ключ дампа, так что
 // чужой дамп под настоящим префиксом не пройдёт.
-func (o *Operator) OfflineCandidates(ctx context.Context) ([]OfflineCandidate, error) {
+//
+// Бакет не листается целиком: сначала корень (инстансы) и их meta.json, затем
+// рекурсивно — только инстансы проекта project, а инстансы без проверенного
+// проекта — лишь при withUnknown (superuser). Все обращения к S3 параллельны.
+func (o *Operator) OfflineCandidates(ctx context.Context, project string, withUnknown bool) ([]OfflineCandidate, error) {
 	raw, err := o.store.PeerPublicKey(ctx, "source")
 	if err != nil || len(raw) != ed25519.PublicKeySize {
 		return nil, errors.New("no pinned Source public key")
@@ -147,37 +155,109 @@ func (o *Operator) OfflineCandidates(ctx context.Context) ([]OfflineCandidate, e
 	if len(clients) == 0 {
 		return nil, storage.ErrNoBuckets
 	}
-	prefixes := map[string]bool{}
-	var errs []error
-	for _, c := range clients {
-		ps, err := c.SignedDumpPrefixes(ctx)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", c.Name(), err))
-			continue
-		}
-		for p := range ps {
-			prefixes[p] = true
+
+	var (
+		mu     sync.Mutex
+		wg     sync.WaitGroup
+		sem    = make(chan struct{}, s3Concurrency)
+		failed = map[string]error{} // бакет → первая ошибка листинга
+	)
+	run := func(f func()) {
+		wg.Go(func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			f()
+		})
+	}
+	fail := func(c *storage.Client, err error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if failed[c.Name()] == nil {
+			failed[c.Name()] = fmt.Errorf("%s: %w", c.Name(), err)
 		}
 	}
-	if len(errs) == len(clients) {
-		return nil, errors.Join(errs...)
+	allFailed := func() error {
+		if len(failed) < len(clients) {
+			return nil
+		}
+		errs := make([]error, 0, len(failed))
+		for _, e := range failed {
+			errs = append(errs, e)
+		}
+		return errors.Join(errs...)
 	}
 
+	// 1. Инстансы — корень каждого бакета.
 	metas := map[string]*InstanceMeta{}
+	for _, c := range clients {
+		run(func() {
+			names, err := c.Instances(ctx)
+			if err != nil {
+				fail(c, err)
+				return
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			for _, n := range names {
+				metas[n] = nil
+			}
+		})
+	}
+	wg.Wait()
+	if err := allFailed(); err != nil {
+		return nil, err
+	}
+
+	// 2. meta.json каждого инстанса из каждого бакета; берём самый свежий.
+	for inst := range metas {
+		for _, c := range clients {
+			run(func() {
+				cur := readInstanceMeta(ctx, c, pub, inst)
+				if cur == nil {
+					return
+				}
+				mu.Lock()
+				defer mu.Unlock()
+				if m := metas[inst]; m == nil || cur.GeneratedAt.After(m.GeneratedAt) {
+					metas[inst] = cur
+				}
+			})
+		}
+	}
+	wg.Wait()
+
+	// 3. Базы — рекурсивный листинг только нужных инстансов.
+	prefixes := map[string]bool{}
+	for inst, m := range metas {
+		known := m != nil && m.Project != ""
+		if known && m.Project != project || !known && !withUnknown {
+			continue
+		}
+		for _, c := range clients {
+			run(func() {
+				ps, err := c.SignedDumpPrefixes(ctx, inst)
+				if err != nil {
+					fail(c, err)
+					return
+				}
+				mu.Lock()
+				defer mu.Unlock()
+				for p := range ps {
+					prefixes[p] = true
+				}
+			})
+		}
+	}
+	wg.Wait()
+	if err := allFailed(); err != nil {
+		return nil, err
+	}
+
 	out := make([]OfflineCandidate, 0, len(prefixes))
 	for p := range prefixes {
 		inst, db, _ := strings.Cut(p, "/")
-		m, seen := metas[inst]
-		if !seen {
-			for _, c := range clients {
-				if cur := readInstanceMeta(ctx, c, pub, inst); cur != nil && (m == nil || cur.GeneratedAt.After(m.GeneratedAt)) {
-					m = cur
-				}
-			}
-			metas[inst] = m
-		}
 		cand := OfflineCandidate{Prefix: p, Instance: inst, DBName: db}
-		if m != nil {
+		if m := metas[inst]; m != nil {
 			cand.Project, cand.ProjectKnown = m.Project, true
 		}
 		out = append(out, cand)
