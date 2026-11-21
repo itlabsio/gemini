@@ -19,6 +19,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.refreshToken = account.refresh_token;
         token.expiresAt = account.expires_at;
       }
+      // Обмен уже провалился (обычно invalid_grant — сессия в Keycloak истекла):
+      // refresh-токен мёртв, повтор только спамит лог. SessionGuard разлогинит.
+      if (token.error) return token;
       if (Date.now() < (token.expiresAt as number) * 1000 - 30_000) return token;
       return await refreshAccessToken(token);
     },
@@ -58,10 +61,10 @@ function refreshAccessToken(token: Record<string, unknown>): Promise<Record<stri
     promise: doRefresh(token),
   };
   refreshes.set(key, entry);
-  entry.promise.then((fresh) => {
-    // Ошибку не кэшируем: следующий запрос должен попробовать заново.
-    if (fresh.error) refreshes.delete(key);
-    else entry.settledAt = Date.now();
+  // Ошибку тоже кэшируем: proxy/layout/page одного запроса иначе повторяют
+  // заведомо провальный обмен. Сессия с error всё равно завершается (SessionGuard).
+  entry.promise.then(() => {
+    entry.settledAt = Date.now();
   });
   return entry.promise;
 }
@@ -89,7 +92,7 @@ async function doRefresh(token: Record<string, unknown>): Promise<Record<string,
       error: undefined,
     };
   } catch (err) {
-    console.error("refresh token failed", err);
+    console.error("refresh token failed:", (err as { error_description?: string })?.error_description ?? err);
     return { ...token, error: "RefreshAccessTokenError" };
   }
 }
