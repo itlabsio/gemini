@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -139,16 +140,24 @@ func (s *Store) DeleteNotificationChannel(ctx context.Context, project, id strin
 }
 
 // targetCols — канал с расшифровываемым токеном: своим либо системного бота.
-const targetCols = `c.name, c.provider, COALESCE(c.bot_token_encrypted, b.token_encrypted), c.chat_id, c.thread_id
-	FROM notification_channels c LEFT JOIN notification_bots b ON b.provider = c.provider`
+// Прокси провайдера — из notification_proxies.
+const targetCols = `c.name, c.provider, COALESCE(c.bot_token_encrypted, b.token_encrypted), c.chat_id, c.thread_id, p.url_encrypted
+	FROM notification_channels c LEFT JOIN notification_bots b ON b.provider = c.provider
+	LEFT JOIN notification_proxies p ON p.provider = c.provider`
 
 func (s *Store) scanTarget(row pgx.Row) (notify.Channel, error) {
 	var (
-		ch  notify.Channel
-		enc []byte
+		ch       notify.Channel
+		enc, pxy []byte
 	)
-	if err := row.Scan(&ch.Name, &ch.Provider, &enc, &ch.ChatID, &ch.ThreadID); err != nil {
+	if err := row.Scan(&ch.Name, &ch.Provider, &enc, &ch.ChatID, &ch.ThreadID, &pxy); err != nil {
 		return ch, mapErr(err)
+	}
+	if pxy != nil {
+		var err error
+		if ch.Proxy, err = s.box.Decrypt(pxy); err != nil {
+			return ch, fmt.Errorf("decrypt proxy url: %w", err)
+		}
 	}
 	if enc == nil {
 		return ch, ErrNoSystemBot
@@ -231,4 +240,69 @@ func (s *Store) DeleteSystemBot(ctx context.Context, provider string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// NotificationProxy — URL прокси провайдера (расшифрованный), пусто — не задан.
+func (s *Store) NotificationProxy(ctx context.Context, provider string) (string, error) {
+	var enc []byte
+	err := s.pool.QueryRow(ctx, `SELECT url_encrypted FROM notification_proxies WHERE provider = $1`, provider).Scan(&enc)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return s.box.Decrypt(enc)
+}
+
+// NotificationProxies — прокси провайдеров для показа: провайдер → URL без пароля.
+func (s *Store) NotificationProxies(ctx context.Context) (map[string]string, error) {
+	rows, err := s.pool.Query(ctx, `SELECT provider, url_encrypted FROM notification_proxies`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var (
+			p   string
+			enc []byte
+		)
+		if err := rows.Scan(&p, &enc); err != nil {
+			return nil, err
+		}
+		raw, err := s.box.Decrypt(enc)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt proxy url: %w", err)
+		}
+		out[p] = RedactURL(raw)
+	}
+	return out, rows.Err()
+}
+
+// RedactURL прячет пароль в URL; неразбираемый URL не показывается вовсе.
+func RedactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "[invalid]"
+	}
+	return u.Redacted()
+}
+
+// SetNotificationProxy сохраняет прокси провайдера; пустой URL — удалить.
+func (s *Store) SetNotificationProxy(ctx context.Context, provider, rawURL, updatedBy string) error {
+	if rawURL == "" {
+		_, err := s.pool.Exec(ctx, `DELETE FROM notification_proxies WHERE provider = $1`, provider)
+		return err
+	}
+	enc, err := s.box.Encrypt(rawURL)
+	if err != nil {
+		return fmt.Errorf("encrypt proxy url: %w", err)
+	}
+	_, err = s.pool.Exec(ctx, `
+		INSERT INTO notification_proxies (provider, url_encrypted, updated_by) VALUES ($1, $2, $3)
+		ON CONFLICT (provider) DO UPDATE
+		SET url_encrypted = EXCLUDED.url_encrypted, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+		provider, enc, updatedBy)
+	return err
 }

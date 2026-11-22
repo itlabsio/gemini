@@ -6,6 +6,7 @@ import {
   createNotificationChannel,
   deleteNotificationChannel,
   deleteSystemBot,
+  setNotificationProxy,
   setSystemBot,
   testNotificationChannel,
   updateNotificationChannel,
@@ -72,6 +73,16 @@ export async function setSystemBotAction(provider: NotificationProvider, token: 
 export async function deleteSystemBotAction(provider: NotificationProvider): Promise<Result> {
   try {
     await deleteSystemBot(provider);
+    revalidate("");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function setProxyAction(provider: NotificationProvider, url: string): Promise<Result> {
+  try {
+    await setNotificationProxy(provider, url);
     revalidate("");
     return { ok: true };
   } catch (e) {

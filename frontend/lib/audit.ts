@@ -46,6 +46,7 @@ export const AUDIT_ACTIONS: Record<string, { label: string; kind: AuditKind }> =
   "notification_channel.test": { label: "Тест канала уведомлений", kind: "run" },
   "notification_bot.update": { label: "Изменение системного бота", kind: "update" },
   "notification_bot.delete": { label: "Удаление системного бота", kind: "delete" },
+  "notification_proxy.update": { label: "Изменение прокси уведомлений", kind: "update" },
   "s3_bucket.create": { label: "Добавление S3-бакета", kind: "create" },
   "s3_bucket.update": { label: "Изменение S3-бакета", kind: "update" },
   "s3_bucket.delete": { label: "Удаление S3-бакета", kind: "delete" },

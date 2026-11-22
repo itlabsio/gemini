@@ -30,7 +30,8 @@ func (s *Server) channelScope(w http.ResponseWriter, r *http.Request) (string, b
 
 type notificationsResponse struct {
 	Channels   []model.NotificationChannel `json:"channels"`
-	SystemBots map[string]string           `json:"system_bots"` // провайдер → имя бота
+	SystemBots map[string]string           `json:"system_bots"`       // провайдер → имя бота
+	Proxies    map[string]string           `json:"proxies,omitempty"` // провайдер → URL без пароля; только в глобальной области
 }
 
 func (s *Server) listNotificationChannels(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +49,14 @@ func (s *Server) listNotificationChannels(w http.ResponseWriter, r *http.Request
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, notificationsResponse{Channels: channels, SystemBots: bots})
+	resp := notificationsResponse{Channels: channels, SystemBots: bots}
+	if project == "" {
+		if resp.Proxies, err = s.d.Store.NotificationProxies(r.Context()); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 type notificationChannelRequest struct {
@@ -114,9 +122,14 @@ func (s *Server) checkBot(w http.ResponseWriter, r *http.Request, in store.Notif
 // botName запрашивает имя бота у мессенджера и заодно проверяет токен.
 // При ошибке сам пишет ответ и возвращает ok=false.
 func (s *Server) botName(w http.ResponseWriter, r *http.Request, provider, token string) (string, bool) {
+	proxy, err := s.d.Store.NotificationProxy(r.Context(), provider)
+	if err != nil {
+		writeStoreError(w, err)
+		return "", false
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	name, err := s.d.Notifier.BotName(ctx, provider, token)
+	name, err := s.d.Notifier.BotName(ctx, provider, token, proxy)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "bot token check failed: "+err.Error())
 		return "", false
@@ -285,5 +298,41 @@ func (s *Server) deleteSystemBot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "notification_bot.delete", provider, map[string]any{"name": provider})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type notificationProxyRequest struct {
+	URL string `json:"url"`
+}
+
+// putNotificationProxy задаёт прокси к API мессенджера для всех его каналов; пустой
+// url — убрать. Только superuser: прокси — произвольный адрес, к которому ходит backend.
+func (s *Server) putNotificationProxy(w http.ResponseWriter, r *http.Request) {
+	provider := mux.Vars(r)["provider"]
+	if provider != notify.ProviderTelegram && provider != notify.ProviderMax {
+		writeError(w, http.StatusBadRequest, "unsupported provider "+provider)
+		return
+	}
+	var req notificationProxyRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	raw := strings.TrimSpace(req.URL)
+	if len(raw) > 512 {
+		writeError(w, http.StatusBadRequest, "proxy URL is too long")
+		return
+	}
+	if raw != "" {
+		if _, err := notify.ParseProxy(raw); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	by, _ := ctxIdentity(r)
+	if err := s.d.Store.SetNotificationProxy(r.Context(), provider, raw, by); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.audit(r, "notification_proxy.update", provider, map[string]any{"name": provider, "url": store.RedactURL(raw)})
 	w.WriteHeader(http.StatusNoContent)
 }

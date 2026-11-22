@@ -244,6 +244,9 @@ export const setSystemBot = (provider: NotificationProvider, token: string) =>
   apiFetch<void>(`/api/notification-bots/${provider}`, { method: "PUT", body: JSON.stringify({ token }) });
 export const deleteSystemBot = (provider: NotificationProvider) =>
   apiFetch<void>(`/api/notification-bots/${provider}`, { method: "DELETE" });
+/** url пустой — убрать прокси */
+export const setNotificationProxy = (provider: NotificationProvider, url: string) =>
+  apiFetch<void>(`/api/notification-proxies/${provider}`, { method: "PUT", body: JSON.stringify({ url }) });
 
 export const listS3Buckets = () => apiFetch<S3Bucket[]>("/api/s3-buckets");
 export interface S3BucketPayload {

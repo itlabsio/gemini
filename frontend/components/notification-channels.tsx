@@ -9,6 +9,7 @@ import {
   deleteChannelAction,
   deleteSystemBotAction,
   saveChannelAction,
+  setProxyAction,
   setSystemBotAction,
   testChannelAction,
 } from "@/app/projects/notification-actions";
@@ -427,10 +428,27 @@ export function NotificationChannels({
   );
 }
 
-/** Токены системных ботов (superuser). Значения не отображаются. */
-export function SystemBots({ systemBots }: { systemBots: Record<string, string> }) {
+/** Токены системных ботов и прокси провайдеров (superuser). Токены не отображаются. */
+export function SystemBots({
+  systemBots,
+  proxies,
+}: {
+  systemBots: Record<string, string>;
+  proxies: Record<string, string>;
+}) {
   const [pending, start] = useTransition();
   const [tokens, setTokens] = useState<Record<string, string>>({});
+  const [proxyInput, setProxyInput] = useState<Record<string, string>>({});
+
+  function saveProxy(provider: NotificationProvider, url: string) {
+    start(async () => {
+      const res = await setProxyAction(provider, url);
+      if (res.ok) {
+        toast.success(url ? "Прокси сохранён" : "Прокси убран");
+        setProxyInput((t) => ({ ...t, [provider]: "" }));
+      } else toast.error(res.error);
+    });
+  }
   const [toDelete, setToDelete] = useState<NotificationProvider | null>(null);
 
   function save(provider: NotificationProvider) {
@@ -460,41 +478,77 @@ export function SystemBots({ systemBots }: { systemBots: Record<string, string> 
         <CardHeader>
           <CardTitle>Системные боты</CardTitle>
           <CardDescription>
-            Админы проектов могут выбрать системного бота для своих каналов, не видя его токен
+            Админы проектов могут выбрать системного бота для своих каналов, не видя его токен.
+            Прокси действует на все каналы мессенджера, в том числе со своими ботами
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {PROVIDERS.map((p) => (
-            <Field
-              key={p.value}
-              label={systemBots[p.value] ? `${p.label}: ${systemBots[p.value]}` : p.label}
-              htmlFor={`bot_${p.value}`}
-            >
-              <div className="flex gap-2">
-                <Input
-                  id={`bot_${p.value}`}
-                  type="password"
-                  value={tokens[p.value] ?? ""}
-                  onChange={(e) => setTokens((t) => ({ ...t, [p.value]: e.target.value }))}
-                  placeholder={systemBots[p.value] ? "введите, чтобы заменить" : TOKEN_PLACEHOLDER[p.value]}
-                  autoComplete="new-password"
-                />
-                <Button disabled={pending || !tokens[p.value]?.trim()} onClick={() => save(p.value)}>
-                  Сохранить
-                </Button>
-                {systemBots[p.value] && (
-                  <Button
-                    variant="ghost-destructive"
-                    size="icon"
-                    aria-label={`Удалить системного бота ${p.label}`}
-                    title="Удалить системного бота"
-                    onClick={() => setToDelete(p.value)}
-                  >
-                    <Trash2 />
+            <div key={p.value} className="flex flex-col gap-2">
+              <Field
+                label={systemBots[p.value] ? `${p.label}: ${systemBots[p.value]}` : p.label}
+                htmlFor={`bot_${p.value}`}
+              >
+                <div className="flex gap-2">
+                  <Input
+                    id={`bot_${p.value}`}
+                    type="password"
+                    value={tokens[p.value] ?? ""}
+                    onChange={(e) => setTokens((t) => ({ ...t, [p.value]: e.target.value }))}
+                    placeholder={systemBots[p.value] ? "введите, чтобы заменить" : TOKEN_PLACEHOLDER[p.value]}
+                    autoComplete="new-password"
+                  />
+                  <Button disabled={pending || !tokens[p.value]?.trim()} onClick={() => save(p.value)}>
+                    Сохранить
                   </Button>
-                )}
-              </div>
-            </Field>
+                  {systemBots[p.value] && (
+                    <Button
+                      variant="ghost-destructive"
+                      size="icon"
+                      aria-label={`Удалить системного бота ${p.label}`}
+                      title="Удалить системного бота"
+                      onClick={() => setToDelete(p.value)}
+                    >
+                      <Trash2 />
+                    </Button>
+                  )}
+                </div>
+              </Field>
+              <Field
+                label="Прокси"
+                htmlFor={`proxy_${p.value}`}
+                hint={proxies[p.value] ? `Сейчас: ${proxies[p.value]}` : "Не задан"}
+              >
+                <div className="flex gap-2">
+                  <Input
+                    id={`proxy_${p.value}`}
+                    value={proxyInput[p.value] ?? ""}
+                    onChange={(e) => setProxyInput((t) => ({ ...t, [p.value]: e.target.value }))}
+                    placeholder="http://user:password@proxy:3128"
+                    autoComplete="off"
+                  />
+                  <Button
+                    variant="outline"
+                    disabled={pending || !proxyInput[p.value]?.trim()}
+                    onClick={() => saveProxy(p.value, proxyInput[p.value].trim())}
+                  >
+                    Сохранить
+                  </Button>
+                  {proxies[p.value] && (
+                    <Button
+                      variant="ghost-destructive"
+                      size="icon"
+                      aria-label={`Убрать прокси ${p.label}`}
+                      title="Убрать прокси"
+                      disabled={pending}
+                      onClick={() => saveProxy(p.value, "")}
+                    >
+                      <Trash2 />
+                    </Button>
+                  )}
+                </div>
+              </Field>
+            </div>
           ))}
         </CardContent>
       </Card>

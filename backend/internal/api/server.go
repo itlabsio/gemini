@@ -88,6 +88,7 @@ func NewRouter(d Deps) http.Handler {
 	}
 	apiR.HandleFunc("/notification-bots/{provider}", auth.RequireSuperuser(s.putSystemBot)).Methods(http.MethodPut)
 	apiR.HandleFunc("/notification-bots/{provider}", auth.RequireSuperuser(s.deleteSystemBot)).Methods(http.MethodDelete)
+	apiR.HandleFunc("/notification-proxies/{provider}", auth.RequireSuperuser(s.putNotificationProxy)).Methods(http.MethodPut)
 
 	apiR.HandleFunc("/instances", auth.RequireAnyProject(auth.RoleViewer, s.listInstances)).Methods(http.MethodGet)
 	apiR.HandleFunc("/instances", auth.RequireSuperuser(s.createInstance)).Methods(http.MethodPost)

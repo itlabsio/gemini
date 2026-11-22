@@ -171,31 +171,31 @@ func TestBotName(t *testing.T) {
 	ctx := context.Background()
 
 	body = `{"ok":true,"result":{"first_name":"G","username":"gemini_bot"}}`
-	if got, err := n.BotName(ctx, ProviderTelegram, testToken); err != nil || got != "G (@gemini_bot)" {
+	if got, err := n.BotName(ctx, ProviderTelegram, testToken, ""); err != nil || got != "G (@gemini_bot)" {
 		t.Errorf("telegram: %q %v", got, err)
 	}
 	body = `{"user_id":1,"first_name":"sd_alerts","username":"id123_bot","is_bot":true}`
-	if got, err := n.BotName(ctx, ProviderMax, "max-token"); err != nil || got != "sd_alerts (@id123_bot)" || auth != "max-token" {
+	if got, err := n.BotName(ctx, ProviderMax, "max-token", ""); err != nil || got != "sd_alerts (@id123_bot)" || auth != "max-token" {
 		t.Errorf("max: %q %v auth=%q", got, err, auth)
 	}
 	body = `{"user_id":1,"username":"id123_bot"}`
-	if got, err := n.BotName(ctx, ProviderMax, "t"); err != nil || got != "@id123_bot" {
+	if got, err := n.BotName(ctx, ProviderMax, "t", ""); err != nil || got != "@id123_bot" {
 		t.Errorf("max without first_name: %q %v", got, err)
 	}
 	body = `{"user_id":1,"first_name":"sd_alerts","username":null}`
-	if got, err := n.BotName(ctx, ProviderMax, "t"); err != nil || got != "sd_alerts" {
+	if got, err := n.BotName(ctx, ProviderMax, "t", ""); err != nil || got != "sd_alerts" {
 		t.Errorf("max without username: %q %v", got, err)
 	}
 	body = `{"ok":true,"result":{"first_name":"Gemini"}}`
-	if got, err := n.BotName(ctx, ProviderTelegram, testToken); err != nil || got != "Gemini" {
+	if got, err := n.BotName(ctx, ProviderTelegram, testToken, ""); err != nil || got != "Gemini" {
 		t.Errorf("telegram without username: %q %v", got, err)
 	}
 	body = ""
-	if _, err := n.BotName(ctx, ProviderMax, "t"); err == nil {
+	if _, err := n.BotName(ctx, ProviderMax, "t", ""); err == nil {
 		t.Error("invalid token accepted")
 	}
 	n.telegramURL = "http://127.0.0.1:1"
-	if _, err := n.BotName(ctx, ProviderTelegram, testToken); err == nil || strings.Contains(err.Error(), testToken) {
+	if _, err := n.BotName(ctx, ProviderTelegram, testToken, ""); err == nil || strings.Contains(err.Error(), testToken) {
 		t.Errorf("token leaked or no error: %v", err)
 	}
 }
@@ -281,5 +281,41 @@ func TestAllowTest(t *testing.T) {
 	}
 	if !n.AllowTest("b") {
 		t.Error("limit must be per channel")
+	}
+}
+
+// Прокси провайдера: запрос уходит через него, у MAX сохраняется свой УЦ.
+func TestProxy(t *testing.T) {
+	var host string
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host = r.URL.Host // через прокси HTTP-запрос приходит с абсолютным URL
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	t.Cleanup(proxy.Close)
+	n := New()
+	n.telegramURL = "http://api.telegram.invalid"
+	if err := n.Send(context.Background(), Channel{Provider: ProviderTelegram, Token: testToken, ChatID: "1", Proxy: proxy.URL}, "x"); err != nil {
+		t.Fatal(err)
+	}
+	if host != "api.telegram.invalid" {
+		t.Fatalf("proxy got host %q", host)
+	}
+	c, err := n.client(ProviderMax, proxy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tr := c.Transport.(*http.Transport); tr.TLSClientConfig == nil || tr.TLSClientConfig.RootCAs == nil || tr.Proxy == nil {
+		t.Error("proxied max client lost its CA pool or proxy")
+	}
+	if c == n.maxHTTP {
+		t.Error("base max client was reused for proxy")
+	}
+	for _, bad := range []string{"", "ftp://h:1", "http://", "http://u:s3cret@h:1/path", "http://u:s3cret@h:1?x=1", "://s3cret"} {
+		if _, err := ParseProxy(bad); err == nil || strings.Contains(err.Error(), "s3cret") {
+			t.Errorf("ParseProxy(%q) = %v", bad, err)
+		}
+	}
+	if _, err := ParseProxy("socks5://u:p@10.0.0.1:1080"); err != nil {
+		t.Error(err)
 	}
 }

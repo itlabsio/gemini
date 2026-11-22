@@ -37,7 +37,7 @@ export default async function SettingsPage() {
           Нет включённых глобальных каналов: о провалах прогонов узнают только проекты со своими каналами
         </Alert>
       )}
-      <SystemBots systemBots={notifications.system_bots} />
+      <SystemBots systemBots={notifications.system_bots} proxies={notifications.proxies ?? {}} />
       <NotificationChannels
         project=""
         channels={notifications.channels}

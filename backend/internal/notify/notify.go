@@ -63,6 +63,7 @@ type Channel struct {
 	Token    string
 	ChatID   string
 	ThreadID string
+	Proxy    string // URL прокси провайдера; пусто — напрямую (или HTTPS_PROXY из env)
 }
 
 // Notifier — отправитель нотификаций.
@@ -75,6 +76,7 @@ type Notifier struct {
 
 	mu       sync.Mutex
 	lastTest map[string]time.Time
+	proxied  map[string]*http.Client // провайдер + URL прокси → клиент
 }
 
 // New создаёт Notifier.
@@ -86,7 +88,54 @@ func New() *Notifier {
 		maxURL:      "https://platform-api2.max.ru",
 		slots:       make(chan struct{}, maxParallelSends),
 		lastTest:    map[string]time.Time{},
+		proxied:     map[string]*http.Client{},
 	}
+}
+
+// ParseProxy проверяет URL прокси уведомлений. Текст ошибки URL не содержит:
+// в нём может быть пароль прокси.
+func ParseProxy(s string) (*url.URL, error) {
+	u, err := url.Parse(s)
+	if err != nil || u.Hostname() == "" || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+		return nil, errors.New("invalid proxy URL: expected scheme://[user:password@]host:port")
+	}
+	switch u.Scheme {
+	case "http", "https", "socks5":
+		return u, nil
+	}
+	return nil, errors.New("proxy scheme must be http, https or socks5")
+}
+
+// client — HTTP-клиент провайдера, с прокси — клон его транспорта.
+// ponytail: клиенты с прокси кешируются навсегда — URL прокси меняют единицы раз,
+// вытеснение понадобится, если прокси станут задавать массово.
+func (n *Notifier) client(provider, proxy string) (*http.Client, error) {
+	base := n.http
+	if provider == ProviderMax {
+		base = n.maxHTTP
+	}
+	if proxy == "" {
+		return base, nil
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	key := provider + " " + proxy
+	if c, ok := n.proxied[key]; ok {
+		return c, nil
+	}
+	u, err := ParseProxy(proxy)
+	if err != nil {
+		return nil, fmt.Errorf("notify: %s: %w", provider, err)
+	}
+	tr, _ := base.Transport.(*http.Transport)
+	if tr == nil {
+		tr = http.DefaultTransport.(*http.Transport)
+	}
+	tr = tr.Clone()
+	tr.Proxy = http.ProxyURL(u)
+	c := &http.Client{Timeout: base.Timeout, Transport: tr}
+	n.proxied[key] = c
+	return c, nil
 }
 
 // Event — данные для сообщения о прогоне.
@@ -175,11 +224,11 @@ func scrubURL(provider string, err error) error {
 
 // BotName запрашивает у мессенджера имя бота и этим же проверяет токен.
 // Формат — «имя (@username)»; если одного из значений нет, берётся другое.
-func (n *Notifier) BotName(ctx context.Context, provider, token string) (string, error) {
+// proxy — URL прокси провайдера, пусто — без него.
+func (n *Notifier) BotName(ctx context.Context, provider, token, proxy string) (string, error) {
 	var (
-		req    *http.Request
-		err    error
-		client = n.http
+		req *http.Request
+		err error
 	)
 	switch provider {
 	case ProviderTelegram:
@@ -188,12 +237,15 @@ func (n *Notifier) BotName(ctx context.Context, provider, token string) (string,
 		if req, err = http.NewRequestWithContext(ctx, http.MethodGet, n.maxURL+"/me", nil); err == nil {
 			req.Header.Set("Authorization", token)
 		}
-		client = n.maxHTTP
 	default:
 		return "", fmt.Errorf("notify: unsupported provider %q", provider)
 	}
 	if err != nil {
 		return "", scrubURL(provider, err)
+	}
+	client, err := n.client(provider, proxy)
+	if err != nil {
+		return "", err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -242,7 +294,11 @@ func (n *Notifier) sendTelegram(ctx context.Context, ch Channel, text string) er
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := n.http.Do(req)
+	client, err := n.client(ProviderTelegram, ch.Proxy)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -268,7 +324,11 @@ func (n *Notifier) sendMax(ctx context.Context, ch Channel, text string) error {
 	}
 	req.Header.Set("Authorization", ch.Token)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := n.maxHTTP.Do(req)
+	client, err := n.client(ProviderMax, ch.Proxy)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}

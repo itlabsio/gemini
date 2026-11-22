@@ -233,6 +233,8 @@ export interface Notifications {
   channels: NotificationChannel[];
   /** Настроенные системные боты: провайдер → имя бота */
   system_bots: Record<string, string>;
+  /** Прокси к API мессенджера: провайдер → URL без пароля. Только у глобальных каналов */
+  proxies?: Record<string, string>;
 }
 
 export interface Project {
