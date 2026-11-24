@@ -148,6 +148,7 @@ type Event struct {
 	RunID      string
 	Error      string // пусто у Success
 	OccurredAt time.Time
+	URL        string // прогоны базы в UI — для кнопки «Подробнее»; пусто → без кнопки
 }
 
 // FailureText — сообщение о провале прогона.
@@ -176,11 +177,11 @@ func (e Event) details() string {
 // канал не должен его задерживать. Ошибка только логируется.
 // ponytail: без очереди и ретраев — сообщение теряется при сбое или рестарте,
 // очередь в БД понадобится, если доставка станет критичной.
-func (n *Notifier) Dispatch(ch Channel, text string) {
+func (n *Notifier) Dispatch(ch Channel, text, link string) {
 	go func() {
 		n.slots <- struct{}{}
 		defer func() { <-n.slots }()
-		if err := n.Send(context.Background(), ch, text); err != nil {
+		if err := n.Send(context.Background(), ch, text, link); err != nil {
 			log.Printf("notify: channel %q: %v", ch.Name, err)
 		}
 	}()
@@ -199,14 +200,18 @@ func (n *Notifier) AllowTest(channelID string) bool {
 	return true
 }
 
-// Send отправляет сообщение и дожидается ответа.
-func (n *Notifier) Send(ctx context.Context, ch Channel, text string) error {
+// linkButton — подпись кнопки со ссылкой под сообщением.
+const linkButton = "Подробнее"
+
+// Send отправляет сообщение и дожидается ответа. link — URL кнопки «Подробнее»
+// под сообщением, пусто — без кнопки. Текст уходит без разметки.
+func (n *Notifier) Send(ctx context.Context, ch Channel, text, link string) error {
 	var err error
 	switch ch.Provider {
 	case ProviderTelegram:
-		err = n.sendTelegram(ctx, ch, text)
+		err = n.sendTelegram(ctx, ch, text, link)
 	case ProviderMax:
-		err = n.sendMax(ctx, ch, text)
+		err = n.sendMax(ctx, ch, text, link)
 	default:
 		return fmt.Errorf("notify: unsupported provider %q", ch.Provider)
 	}
@@ -281,8 +286,11 @@ func (n *Notifier) BotName(ctx context.Context, provider, token, proxy string) (
 	return "", fmt.Errorf("notify: %s returned no bot name", provider)
 }
 
-func (n *Notifier) sendTelegram(ctx context.Context, ch Channel, text string) error {
+func (n *Notifier) sendTelegram(ctx context.Context, ch Channel, text, link string) error {
 	msg := map[string]any{"chat_id": ch.ChatID, "text": text, "disable_web_page_preview": true}
+	if link != "" {
+		msg["reply_markup"] = map[string]any{"inline_keyboard": [][]map[string]string{{{"text": linkButton, "url": link}}}}
+	}
 	if id, err := strconv.ParseInt(ch.ThreadID, 10, 64); err == nil {
 		msg["message_thread_id"] = id
 	}
@@ -315,8 +323,14 @@ func (n *Notifier) sendTelegram(ctx context.Context, ch Channel, text string) er
 
 // sendMax шлёт текст в чат MAX: токен — в заголовке, chat_id — в query.
 // Текст укладывается в лимит MAX (4000 символов): ошибка режется Sanitize до 1500 байт.
-func (n *Notifier) sendMax(ctx context.Context, ch Channel, text string) error {
-	body, _ := json.Marshal(map[string]string{"text": text})
+func (n *Notifier) sendMax(ctx context.Context, ch Channel, text, link string) error {
+	msg := map[string]any{"text": text}
+	if link != "" {
+		msg["attachments"] = []map[string]any{{"type": "inline_keyboard", "payload": map[string]any{
+			"buttons": [][]map[string]string{{{"type": "link", "text": linkButton, "url": link}}},
+		}}}
+	}
+	body, _ := json.Marshal(msg)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		n.maxURL+"/messages?"+url.Values{"chat_id": {ch.ChatID}}.Encode(), bytes.NewReader(body))
 	if err != nil {

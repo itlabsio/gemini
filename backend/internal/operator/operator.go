@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -433,6 +434,10 @@ func (o *Operator) runEvent(ctx context.Context, db *model.Database, kind model.
 	}
 	if db != nil {
 		e.Database = db.DBName
+		// Без схемы мессенджер отвергнет кнопку «Подробнее» вместе со всем сообщением.
+		if strings.HasPrefix(o.cfg.PublicURL, "https://") || strings.HasPrefix(o.cfg.PublicURL, "http://") {
+			e.URL = o.cfg.PublicURL + "/runs?database_id=" + url.QueryEscape(db.ID)
+		}
 		if inst, err := o.store.GetInstance(ctx, db.InstanceID); err == nil {
 			e.Instance, e.Project = inst.Name, inst.Project
 		}
@@ -460,7 +465,7 @@ func (o *Operator) dispatchNotification(ctx context.Context, e notify.Event, fai
 		return
 	}
 	for _, ch := range channels {
-		o.notifier.Dispatch(ch, text)
+		o.notifier.Dispatch(ch, text, e.URL)
 	}
 }
 

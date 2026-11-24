@@ -251,7 +251,7 @@ func (s *Server) testNotificationChannel(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 	text := fmt.Sprintf("🔔 Gemini/%s: тестовое сообщение канала «%s»", s.d.Cfg.Role, ch.Name)
-	if err := s.d.Notifier.Send(ctx, ch, text); err != nil {
+	if err := s.d.Notifier.Send(ctx, ch, text, ""); err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}

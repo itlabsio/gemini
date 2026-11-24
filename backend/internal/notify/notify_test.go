@@ -92,7 +92,7 @@ func TestFailureTextIsSanitized(t *testing.T) {
 
 func TestTelegramPayload(t *testing.T) {
 	n, path, got := capture(t, http.StatusOK, `{"ok":true}`)
-	if err := n.Send(context.Background(), tg, SuccessText(ev)); err != nil {
+	if err := n.Send(context.Background(), tg, SuccessText(ev), ""); err != nil {
 		t.Fatal(err)
 	}
 	if *path != "/bot"+testToken+"/sendMessage" {
@@ -103,9 +103,34 @@ func TestTelegramPayload(t *testing.T) {
 	}
 }
 
+func TestLinkButton(t *testing.T) {
+	const link = "https://gemini.example/runs?database_id=d1"
+	n, _, got := capture(t, http.StatusOK, `{"ok":true}`)
+	if err := n.Send(context.Background(), tg, "x", link); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := json.Marshal((*got)["reply_markup"]); string(b) != `{"inline_keyboard":[[{"text":"Подробнее","url":"`+link+`"}]]}` {
+		t.Errorf("telegram reply_markup = %s", b)
+	}
+
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+	}))
+	t.Cleanup(srv.Close)
+	n.maxURL = srv.URL
+	if err := n.Send(context.Background(), Channel{Provider: ProviderMax, Token: "t", ChatID: "1"}, "x", link); err != nil {
+		t.Fatal(err)
+	}
+	want := `[{"payload":{"buttons":[[{"text":"Подробнее","type":"link","url":"` + link + `"}]]},"type":"inline_keyboard"}]`
+	if b, _ := json.Marshal(body["attachments"]); string(b) != want {
+		t.Errorf("max attachments = %s", b)
+	}
+}
+
 func TestSendReportsProviderDescription(t *testing.T) {
 	n, _, _ := capture(t, http.StatusBadRequest, `{"ok":false,"description":"chat not found"}`)
-	err := n.Send(context.Background(), tg, "x")
+	err := n.Send(context.Background(), tg, "x", "")
 	if err == nil || !strings.Contains(err.Error(), "chat not found") {
 		t.Fatalf("err = %v", err)
 	}
@@ -115,7 +140,7 @@ func TestSendReportsProviderDescription(t *testing.T) {
 func TestSendErrorDoesNotLeakToken(t *testing.T) {
 	n := New()
 	n.telegramURL = "http://127.0.0.1:1"
-	err := n.Send(context.Background(), tg, "x")
+	err := n.Send(context.Background(), tg, "x", "")
 	if err == nil {
 		t.Fatal("expected connection error")
 	}
@@ -142,14 +167,14 @@ func TestMaxRequest(t *testing.T) {
 	n := New()
 	n.maxURL = srv.URL
 	ch := Channel{Provider: ProviderMax, Token: "max-token", ChatID: "-100"}
-	if err := n.Send(context.Background(), ch, "hello"); err != nil {
+	if err := n.Send(context.Background(), ch, "hello", ""); err != nil {
 		t.Fatal(err)
 	}
 	if auth != "max-token" || chat != "-100" || text != "hello" {
 		t.Errorf("auth=%q chat=%q text=%q", auth, chat, text)
 	}
 	ch.ChatID = "-1"
-	if err := n.Send(context.Background(), ch, "x"); err == nil || !strings.Contains(err.Error(), "chat.denied") {
+	if err := n.Send(context.Background(), ch, "x", ""); err == nil || !strings.Contains(err.Error(), "chat.denied") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -231,14 +256,14 @@ func TestMaxNotFoundIsExplained(t *testing.T) {
 	t.Cleanup(srv.Close)
 	n := New()
 	n.maxURL = srv.URL
-	err := n.Send(context.Background(), Channel{Provider: ProviderMax, Token: "t", ChatID: "100"}, "x")
+	err := n.Send(context.Background(), Channel{Provider: ProviderMax, Token: "t", ChatID: "100"}, "x", "")
 	if err == nil || !strings.Contains(err.Error(), "отрицательный") {
 		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestSendUnknownProvider(t *testing.T) {
-	if err := New().Send(context.Background(), Channel{Provider: "slack"}, "x"); err == nil {
+	if err := New().Send(context.Background(), Channel{Provider: "slack"}, "x", ""); err == nil {
 		t.Fatal("unsupported provider accepted")
 	}
 }
@@ -294,7 +319,7 @@ func TestProxy(t *testing.T) {
 	t.Cleanup(proxy.Close)
 	n := New()
 	n.telegramURL = "http://api.telegram.invalid"
-	if err := n.Send(context.Background(), Channel{Provider: ProviderTelegram, Token: testToken, ChatID: "1", Proxy: proxy.URL}, "x"); err != nil {
+	if err := n.Send(context.Background(), Channel{Provider: ProviderTelegram, Token: testToken, ChatID: "1", Proxy: proxy.URL}, "x", ""); err != nil {
 		t.Fatal(err)
 	}
 	if host != "api.telegram.invalid" {
